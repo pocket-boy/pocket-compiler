@@ -1,0 +1,10 @@
+[package]
+name = "compiler-ffi"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+compiler-core = { path = "../compiler-core/" }
