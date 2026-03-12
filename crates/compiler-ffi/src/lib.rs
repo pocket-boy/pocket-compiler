@@ -12,6 +12,9 @@ pub struct CompilerHandle(pub *mut compiler_core::compiler::Compiler);
 #[repr(transparent)]
 pub struct ResultHandle(pub *mut HashMap<String, Result<String, String>>);
 
+#[repr(transparent)]
+pub struct StringHandle(pub *mut c_char);
+
 impl CompilerHandle {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn init_compiler() -> CompilerHandle {
@@ -34,6 +37,13 @@ impl ResultHandle {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn drop_result(self) {
         unsafe { drop(Box::from_raw(self.0)) }
+    }
+}
+
+impl StringHandle {
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn drop_string(self) {
+        unsafe { drop(CString::from_raw(self.0)) }
     }
 }
 
@@ -104,28 +114,32 @@ impl ResultHandle {
         self,
         name: *const c_char,
         err: *mut bool,
-    ) -> *const c_char {
+    ) -> StringHandle {
         unsafe {
             let name = CStr::from_ptr(name).to_str().ok();
-            name.and_then(|name| self.0.as_ref().and_then(|results| results.get(name)))
-                .and_then(|result| {
-                    CString::new(
-                        match result {
-                            Ok(item) => {
-                                *err = false;
-                                item
+            StringHandle(
+                name.and_then(|name| self.0.as_ref().and_then(|results| results.get(name)))
+                    .and_then(|result| {
+                        CString::new(
+                            match result {
+                                Ok(item) => {
+                                    *err = false;
+                                    item
+                                }
+                                Err(error) => {
+                                    *err = true;
+                                    error
+                                }
                             }
-                            Err(error) => {
-                                *err = true;
-                                error
-                            }
-                        }
-                        .clone(),
-                    )
-                    .map(|result| result.as_ptr())
-                    .ok()
-                })
-                .unwrap_or_else(|| c"module missing or invalid compiler handle".as_ptr())
+                            .clone(),
+                        )
+                        .ok()
+                    })
+                    .unwrap_or_else(|| {
+                        CString::new("module missing or invalid compiler handle").unwrap()
+                    })
+                    .into_raw(),
+            )
         }
     }
 }
