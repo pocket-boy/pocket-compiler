@@ -1,8 +1,13 @@
 #![allow(clippy::missing_safety_doc)]
 
-use std::ffi::{CStr, c_char};
+use std::{
+    collections::HashMap,
+    ffi::{CStr, c_char},
+};
 
 pub struct CompilerHandle(pub *mut compiler_core::Compiler);
+
+pub struct ResultHandle(pub *mut HashMap<String, Result<String, String>>);
 
 impl CompilerHandle {
     #[unsafe(no_mangle)]
@@ -54,3 +59,5 @@ impl CompilerHandle {
         }
     }
 }
+
+impl ResultHandle {}
