@@ -38,14 +38,14 @@ impl Compiler {
 
     /// Build all of the modules and get their results.
     pub fn try_build(&self) -> HashMap<String, Result<String, String>> {
-        let mut parser = final_parser::<_, _, _, ErrorTree<&str>>(Parser::item);
+        let mut parser = final_parser::<_, _, _, ErrorTree<&str>>(Parser::file);
         self.modules
             .iter()
             .map(|(module, content)| {
                 (
                     module.clone(),
                     parser(content)
-                        .map(|item| format!("{:?}", item))
+                        .map(|file| format!("{:?}", file))
                         .map_err(|err| format!("{}", err)),
                 )
             })

@@ -3,7 +3,7 @@ use nom::{
     branch::alt,
     bytes::complete::{take_while, take_while1},
     character::complete::{alpha1, digit1, line_ending},
-    combinator::{all_consuming, eof, opt, recognize},
+    combinator::{all_consuming, opt, recognize},
     multi::{many_m_n, many0, separated_list0},
     sequence::{delimited, preceded, separated_pair, terminated, tuple},
 };
@@ -30,7 +30,7 @@ pub struct Func<'s>(
     pub Name<'s>,
     pub Name<'s>,
     pub Vec<(Name<'s>, Name<'s>)>,
-    Body<'s>,
+    pub Body<'s>,
 );
 
 /// Represents a code block.
