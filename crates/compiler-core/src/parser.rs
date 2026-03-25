@@ -1,7 +1,7 @@
 use nom::{
     IResult, Parser as NomParser,
     branch::alt,
-    bytes::complete::{take_while, take_while1},
+    bytes::complete::{is_not, take_while, take_while1},
     character::complete::{alpha1, digit1, line_ending},
     combinator::{all_consuming, opt, recognize},
     multi::{many_m_n, many0, separated_list0},
@@ -11,6 +11,14 @@ use nom_supreme::{ParserExt as _, error::ErrorTree, tag::complete::tag};
 
 /// Result type for parsing.
 pub type Result<'s, T> = IResult<&'s str, T, ErrorTree<&'s str>>;
+
+/// Number literal.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub struct Num(pub usize);
+
+/// String literal.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub struct Str(pub String);
 
 /// Current parser state.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
@@ -30,7 +38,7 @@ pub struct Func<'s>(
     pub Name<'s>,
     pub Name<'s>,
     pub Vec<(Name<'s>, Name<'s>)>,
-    pub Body<'s>,
+    Body<'s>,
 );
 
 /// Represents a code block.
@@ -49,9 +57,9 @@ pub struct File<'s>(pub Vec<Item<'s>>);
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Expr<'s> {
     /// ...
-    Num(isize),
+    Num(Num),
     /// ...
-    Str(&'s str),
+    Str(Str),
     /// ...
     Bool(bool),
     /// ...
@@ -91,13 +99,29 @@ impl Parser {
 
 impl Parser {
     /// ...
+    pub fn num(input: &str) -> Result<'_, Num> {
+        // WARN: Currently, throws on too large. Fix for later!
+        digit1
+            .map(|n: &str| Num(n.parse().expect("number literal too large")))
+            .parse(input)
+    }
+
+    /// ...
+    pub fn str(input: &str) -> Result<'_, Str> {
+        // ...
+        delimited(tag("\""), is_not("\""), tag("\""))
+            .map(|s| Str(String::from(s)))
+            .parse(input)
+    }
+
+    /// ...
     pub fn expr(input: &str) -> Result<'_, Expr<'_>> {
         // NOTE: Currently, a boolean, number, identifier, or call expression.
         alt((
             tag("true").value(Expr::Bool(true)),
             tag("false").value(Expr::Bool(false)),
-            // WARN: Currently, throws on too large. Fix for later!
-            digit1.map(|n: &str| Expr::Num(n.parse().expect("number literal too large"))),
+            Self::str.map(Expr::Str),
+            Self::num.map(Expr::Num),
             Self::call.map(Expr::Call),
             Self::name.map(Expr::Name),
         ))
