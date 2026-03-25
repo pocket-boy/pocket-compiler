@@ -3,7 +3,7 @@ use nom::{
     branch::alt,
     bytes::complete::{take_while, take_while1},
     character::complete::{alpha1, digit1, line_ending},
-    combinator::{opt, recognize},
+    combinator::{all_consuming, eof, opt, recognize},
     multi::{many_m_n, many0, separated_list0},
     sequence::{delimited, preceded, separated_pair, terminated, tuple},
 };
@@ -16,13 +16,13 @@ pub type Result<'s, T> = IResult<&'s str, T, ErrorTree<&'s str>>;
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Parser(pub usize);
 
-/// Represents an expression.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Expr<'s>(pub &'s str);
-
 /// Represents an identifier.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Name<'s>(pub &'s str);
+
+/// Represents an identifier.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Call<'s>(pub Name<'s>, pub Vec<Expr<'s>>);
 
 /// Represents a function definition.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -41,6 +41,25 @@ pub struct Body<'s>(pub Vec<Stmt<'s>>);
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Item<'s>(pub bool, pub Stmt<'s>);
 
+/// Represents a file-based module.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct File<'s>(pub Vec<Item<'s>>);
+
+/// Represents an expression.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Expr<'s> {
+    /// ...
+    Num(isize),
+    /// ...
+    Str(&'s str),
+    /// ...
+    Bool(bool),
+    /// ...
+    Name(Name<'s>),
+    /// ...
+    Call(Call<'s>),
+}
+
 /// Reprents a component of a code block.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Stmt<'s> {
@@ -48,10 +67,14 @@ pub enum Stmt<'s> {
     Bind(Bind<'s>),
     /// ...
     Func(Func<'s>),
+    /// ...
+    Call(Call<'s>),
+    /// ...
+    Ret(Expr<'s>),
 }
 
 /// Represents an assignment.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Bind<'s> {
     /// ...
     Let(Name<'s>, Option<Name<'s>>, Expr<'s>),
@@ -69,10 +92,16 @@ impl Parser {
 impl Parser {
     /// ...
     pub fn expr(input: &str) -> Result<'_, Expr<'_>> {
-        // NOTE: Currently, a boolean or number.
-        alt((tag("true"), tag("false"), digit1))
-            .map(Expr)
-            .parse(input)
+        // NOTE: Currently, a boolean, number, identifier, or call expression.
+        alt((
+            tag("true").value(Expr::Bool(true)),
+            tag("false").value(Expr::Bool(false)),
+            // WARN: Currently, throws on too large. Fix for later!
+            digit1.map(|n: &str| Expr::Num(n.parse().expect("number literal too large"))),
+            Self::call.map(Expr::Call),
+            Self::name.map(Expr::Name),
+        ))
+        .parse(input)
     }
 
     /// ...
@@ -84,6 +113,24 @@ impl Parser {
         )))
         .map(Name)
         .parse(input)
+    }
+
+    /// ...
+    pub fn call(input: &str) -> Result<'_, Call<'_>> {
+        // ...
+        let (input, name) = terminated(Self::name, take_while(Self::space)).parse(input)?;
+        // ...
+        let (input, args) = delimited(
+            tag("("),
+            separated_list0(
+                tag(","),
+                delimited(take_while(Self::space), Self::expr, take_while(Self::space)),
+            ),
+            tag(")"),
+        )
+        .parse(input)?;
+        // ...
+        Ok((input, Call(name, args)))
     }
 
     /// ...
@@ -130,6 +177,26 @@ impl Parser {
             },
         ))
     }
+
+    /// ...
+    pub fn file(input: &str) -> Result<'_, File<'_>> {
+        // ...
+        // terminated(
+        //     many0(alt((
+        //         Self::item.map(Some),
+        //         tuple((take_while(Self::space), line_ending)).value(None),
+        //     ))),
+        //     tuple((take_while(Self::space), eof)),
+        // )
+        // .map(|items| File(items.into_iter().flatten().collect()))
+        // .parse(input)
+        all_consuming(separated_list0(
+            line_ending,
+            alt((Self::item.map(Some), take_while(Self::space).value(None))),
+        ))
+        .map(|items| File(items.into_iter().flatten().collect()))
+        .parse(input)
+    }
 }
 
 impl Parser {
@@ -137,8 +204,15 @@ impl Parser {
     pub fn stmt<'s>(&self) -> impl NomParser<&'s str, Stmt<'s>, ErrorTree<&'s str>> {
         // TODO: implement `Parser::stmt()`.
         move |input| {
-            // NOTE: Currently, either a function definition or binding.
-            alt((self.func().map(Stmt::Func), Self::bind.map(Stmt::Bind))).parse(input)
+            // NOTE: Currently, either a function definition, return statement, or binding.
+            alt((
+                preceded(tuple((tag("return"), take_while(Self::space))), Self::expr)
+                    .map(Stmt::Ret),
+                self.func().map(Stmt::Func),
+                Self::bind.map(Stmt::Bind),
+                Self::call.map(Stmt::Call),
+            ))
+            .parse(input)
         }
     }
 
