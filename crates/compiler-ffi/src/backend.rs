@@ -12,10 +12,10 @@ impl BackendHandle {
     #[unsafe(no_mangle)]
     unsafe extern "C" fn init_backend(compiler: CompilerHandle, environ: ExternEnviron) -> Self {
         // ...
-        Self(Box::into_raw(Box::new(Backend {
-            compiler: unsafe { compiler.0.as_ref().unwrap().clone() },
+        Self(Box::into_raw(Box::new(Backend::new(
+            unsafe { compiler.0.as_ref().unwrap().clone() },
             environ,
-        })))
+        ))))
     }
 
     /// ...

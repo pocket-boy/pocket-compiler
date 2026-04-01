@@ -9,6 +9,12 @@ use nom::{
 };
 use nom_supreme::{ParserExt as _, error::ErrorTree, tag::complete::tag};
 
+/// ...
+pub type Borrowed<'s> = &'s str;
+
+/// ...
+pub type Owned = String;
+
 /// Result type for parsing.
 pub type Result<'s, T> = IResult<&'s str, T, ErrorTree<&'s str>>;
 
@@ -26,36 +32,36 @@ pub struct Parser(pub usize);
 
 /// Represents an identifier.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Name<'s>(pub &'s str);
+pub struct Name<S>(pub S);
 
 /// Represents an identifier.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Call<'s>(pub Name<'s>, pub Vec<Expr<'s>>);
+pub struct Call<S>(pub Name<S>, pub Vec<Expr<S>>);
 
 /// Represents a function definition.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Func<'s>(
-    pub Name<'s>,
-    pub Name<'s>,
-    pub Vec<(Name<'s>, Name<'s>)>,
-    Body<'s>,
+pub struct Func<S>(
+    pub Name<S>,
+    pub Name<S>,
+    pub Vec<(Name<S>, Name<S>)>,
+    pub Body<S>,
 );
 
 /// Represents a code block.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Body<'s>(pub Vec<Stmt<'s>>);
+pub struct Body<S>(pub Vec<Stmt<S>>);
 
 /// Represents a top-level item.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Item<'s>(pub bool, pub Stmt<'s>);
+pub struct Item<S>(pub bool, pub Stmt<S>);
 
 /// Represents a file-based module.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct File<'s>(pub Vec<Item<'s>>);
+pub struct File<S>(pub Vec<Item<S>>);
 
 /// Represents an expression.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Expr<'s> {
+pub enum Expr<S> {
     /// ...
     Num(Num),
     /// ...
@@ -63,31 +69,31 @@ pub enum Expr<'s> {
     /// ...
     Bool(bool),
     /// ...
-    Name(Name<'s>),
+    Name(Name<S>),
     /// ...
-    Call(Call<'s>),
+    Call(Call<S>),
 }
 
 /// Reprents a component of a code block.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Stmt<'s> {
+pub enum Stmt<S> {
     /// ...
-    Bind(Bind<'s>),
+    Bind(Bind<S>),
     /// ...
-    Func(Func<'s>),
+    Func(Func<S>),
     /// ...
-    Call(Call<'s>),
+    Call(Call<S>),
     /// ...
-    Ret(Expr<'s>),
+    Ret(Expr<S>),
 }
 
 /// Represents an assignment.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Bind<'s> {
+pub enum Bind<S> {
     /// ...
-    Let(Name<'s>, Option<Name<'s>>, Expr<'s>),
+    Let(Name<S>, Option<Name<S>>, Expr<S>),
     /// ...
-    Var(Name<'s>, Option<Name<'s>>, Expr<'s>),
+    Var(Name<S>, Option<Name<S>>, Expr<S>),
 }
 
 impl Parser {
@@ -115,7 +121,7 @@ impl Parser {
     }
 
     /// ...
-    pub fn expr(input: &str) -> Result<'_, Expr<'_>> {
+    pub fn expr(input: &str) -> Result<'_, Expr<Borrowed<'_>>> {
         // NOTE: Currently, a boolean, number, identifier, or call expression.
         alt((
             tag("true").value(Expr::Bool(true)),
@@ -129,7 +135,7 @@ impl Parser {
     }
 
     /// ...
-    pub fn name(input: &str) -> Result<'_, Name<'_>> {
+    pub fn name(input: &str) -> Result<'_, Name<Borrowed<'_>>> {
         // Recognise identifier pattern.
         recognize(tuple((
             alt((tag("_"), alpha1)),
@@ -140,7 +146,7 @@ impl Parser {
     }
 
     /// ...
-    pub fn call(input: &str) -> Result<'_, Call<'_>> {
+    pub fn call(input: &str) -> Result<'_, Call<Borrowed<'_>>> {
         // ...
         let (input, name) = terminated(Self::name, take_while(Self::space)).parse(input)?;
         // ...
@@ -158,7 +164,7 @@ impl Parser {
     }
 
     /// ...
-    pub fn item(input: &str) -> Result<'_, Item<'_>> {
+    pub fn item(input: &str) -> Result<'_, Item<Borrowed<'_>>> {
         // Parse optional visibility specifier.
         let (input, local) =
             opt(terminated(tag("local"), take_while1(Self::space))).parse(input)?;
@@ -170,7 +176,7 @@ impl Parser {
     }
 
     /// ...
-    pub fn bind(input: &str) -> Result<'_, Bind<'_>> {
+    pub fn bind(input: &str) -> Result<'_, Bind<Borrowed<'_>>> {
         // Parse binding kind.
         let (input, kind) = alt((tag("let"), tag("var"))).parse(input)?;
         // Parse binding identifier.
@@ -203,17 +209,7 @@ impl Parser {
     }
 
     /// ...
-    pub fn file(input: &str) -> Result<'_, File<'_>> {
-        // ...
-        // terminated(
-        //     many0(alt((
-        //         Self::item.map(Some),
-        //         tuple((take_while(Self::space), line_ending)).value(None),
-        //     ))),
-        //     tuple((take_while(Self::space), eof)),
-        // )
-        // .map(|items| File(items.into_iter().flatten().collect()))
-        // .parse(input)
+    pub fn file(input: &str) -> Result<'_, File<Borrowed<'_>>> {
         all_consuming(separated_list0(
             line_ending,
             alt((Self::item.map(Some), take_while(Self::space).value(None))),
@@ -225,7 +221,7 @@ impl Parser {
 
 impl Parser {
     /// ...
-    pub fn stmt<'s>(&self) -> impl NomParser<&'s str, Stmt<'s>, ErrorTree<&'s str>> {
+    pub fn stmt<'s>(&self) -> impl NomParser<&'s str, Stmt<Borrowed<'s>>, ErrorTree<&'s str>> {
         // TODO: implement `Parser::stmt()`.
         move |input| {
             // NOTE: Currently, either a function definition, return statement, or binding.
@@ -241,7 +237,7 @@ impl Parser {
     }
 
     /// ...
-    pub fn func<'s>(&self) -> impl NomParser<&'s str, Func<'s>, ErrorTree<&'s str>> {
+    pub fn func<'s>(&self) -> impl NomParser<&'s str, Func<Borrowed<'s>>, ErrorTree<&'s str>> {
         // TODO: implement `Parser::func()`.
         move |input| {
             // Parse function identifier.
@@ -280,7 +276,7 @@ impl Parser {
     }
 
     /// ...
-    pub fn body<'s>(&self) -> impl NomParser<&'s str, Body<'s>, ErrorTree<&'s str>> {
+    pub fn body<'s>(&self) -> impl NomParser<&'s str, Body<Borrowed<'s>>, ErrorTree<&'s str>> {
         // TODO: implement `Parser::body()`.
         move |input| {
             // ...
@@ -306,6 +302,90 @@ impl Parser {
                 input,
                 Body(std::iter::once(first.clone()).chain(items).collect()),
             ))
+        }
+    }
+}
+
+impl From<Name<Borrowed<'_>>> for Name<Owned> {
+    fn from(value: Name<Borrowed<'_>>) -> Self {
+        Self(value.0.into())
+    }
+}
+
+impl From<Call<Borrowed<'_>>> for Call<Owned> {
+    fn from(value: Call<Borrowed<'_>>) -> Self {
+        Self(
+            value.0.into(),
+            value.1.into_iter().map(|expr| expr.into()).collect(),
+        )
+    }
+}
+
+impl From<Func<Borrowed<'_>>> for Func<Owned> {
+    fn from(value: Func<Borrowed<'_>>) -> Self {
+        Self(
+            value.0.into(),
+            value.1.into(),
+            value
+                .2
+                .into_iter()
+                .map(|(name, anno)| (name.into(), anno.into()))
+                .collect(),
+            value.3.into(),
+        )
+    }
+}
+
+impl From<Body<Borrowed<'_>>> for Body<Owned> {
+    fn from(value: Body<Borrowed<'_>>) -> Self {
+        Self(value.0.into_iter().map(|stmt| stmt.into()).collect())
+    }
+}
+
+impl From<Item<Borrowed<'_>>> for Item<Owned> {
+    fn from(value: Item<Borrowed<'_>>) -> Self {
+        Self(value.0, value.1.into())
+    }
+}
+
+impl From<File<Borrowed<'_>>> for File<Owned> {
+    fn from(value: File<Borrowed<'_>>) -> Self {
+        Self(value.0.into_iter().map(|item| item.into()).collect())
+    }
+}
+
+impl From<Expr<Borrowed<'_>>> for Expr<Owned> {
+    fn from(value: Expr<Borrowed<'_>>) -> Self {
+        match value {
+            Expr::Num(num) => Self::Num(num),
+            Expr::Str(str) => Self::Str(str),
+            Expr::Bool(bool) => Self::Bool(bool),
+            Expr::Name(name) => Self::Name(name.into()),
+            Expr::Call(call) => Self::Call(call.into()),
+        }
+    }
+}
+
+impl From<Stmt<Borrowed<'_>>> for Stmt<Owned> {
+    fn from(value: Stmt<Borrowed<'_>>) -> Self {
+        match value {
+            Stmt::Bind(bind) => Self::Bind(bind.into()),
+            Stmt::Func(func) => Self::Func(func.into()),
+            Stmt::Call(call) => Self::Call(call.into()),
+            Stmt::Ret(expr) => Self::Ret(expr.into()),
+        }
+    }
+}
+
+impl From<Bind<Borrowed<'_>>> for Bind<Owned> {
+    fn from(value: Bind<Borrowed<'_>>) -> Self {
+        match value {
+            Bind::Let(name, anno, expr) => {
+                Self::Let(name.into(), anno.map(Name::into), expr.into())
+            }
+            Bind::Var(name, anno, expr) => {
+                Self::Var(name.into(), anno.map(Name::into), expr.into())
+            }
         }
     }
 }
