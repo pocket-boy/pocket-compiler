@@ -1,5 +1,8 @@
 #![allow(clippy::missing_safety_doc)]
 
+pub mod backend;
+pub mod environ;
+
 use std::{
     collections::HashMap,
     ffi::{CStr, CString, c_char},
