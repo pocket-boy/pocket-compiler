@@ -39,6 +39,10 @@ pub struct Num(pub isize);
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, From)]
 pub struct Str(pub String);
 
+/// ...
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, From)]
+pub struct Arr(pub usize);
+
 ////////////////////////////////////////////////////////////
 
 /// ...
@@ -82,6 +86,8 @@ pub enum Item<S> {
 /// ...
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, TryInto, From)]
 pub enum Prim<S> {
+    /// ...
+    Arr(Arr),
     /// ...
     Num(Num),
     /// ...
@@ -204,6 +210,18 @@ impl Parser {
         delimited(tag("\""), is_not("\""), tag("\""))
             .map(|s| Str(String::from(s)))
             .parse(input)
+    }
+
+    /// ...
+    pub fn arr(input: &str) -> Result<'_, Arr> {
+        // ...
+        delimited(
+            tuple((tag("["), take_while(Self::space))),
+            Self::num,
+            tuple((take_while(Self::space), tag("]"))),
+        )
+        .map(|Num(num)| Arr(num as usize))
+        .parse(input)
     }
 }
 
@@ -328,6 +346,7 @@ impl Parser {
             // ...
             tag("true").value(Prim::Bool(true)),
             tag("false").value(Prim::Bool(false)),
+            Self::arr.map(From::from),
             Self::str.map(From::from),
             Self::num.map(From::from),
             Self::call.map(From::from),
@@ -600,6 +619,7 @@ impl From<Assn<Borrowed<'_>>> for Assn<Owned> {
 impl From<Prim<Borrowed<'_>>> for Prim<Owned> {
     fn from(value: Prim<Borrowed<'_>>) -> Self {
         match value {
+            Prim::Arr(arr) => Self::Arr(arr),
             Prim::Num(num) => Self::Num(num),
             Prim::Str(str) => Self::Str(str),
             Prim::Bool(bool) => Self::Bool(bool),

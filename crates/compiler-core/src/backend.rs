@@ -37,11 +37,17 @@ pub enum Intrinsic {
     Draw,
     /// ...
     Pressed,
+    /// ...
+    ArrayGet,
+    /// ...
+    ArraySet,
 }
 
 /// ...
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, From, TryInto)]
 pub enum Value {
+    /// ...
+    Arr(Vec<Value>),
     /// ...
     Num(Num),
     /// ...
@@ -146,6 +152,16 @@ impl<E: Environ> Backend<E> {
                     Binding::Value(false, Value::Num(Num(offset as isize))),
                 );
             }
+            // ...
+            scopes.last_mut().unwrap().insert(
+                Path(vec![Name(String::from("Array")), Name(String::from("get"))]),
+                Binding::Intrinsic(Intrinsic::ArrayGet),
+            );
+            // ...
+            scopes.last_mut().unwrap().insert(
+                Path(vec![Name(String::from("Array")), Name(String::from("set"))]),
+                Binding::Intrinsic(Intrinsic::ArraySet),
+            );
         }
         // ...
         println!("SCOPES: {:#?}", self.scopes);
@@ -191,7 +207,7 @@ impl<E: Environ> Backend<E> {
         // ...
         scopes.push(scope);
         // ...
-        Self::eval_body(&mut self.environ, scopes, &render.3, input).expect("RUNTIME ERROR!");
+        dbg!(Self::eval_body(&mut self.environ, scopes, &render.3, input).expect("RUNTIME ERROR!"));
         // ...
         scopes.pop();
     }
@@ -499,7 +515,48 @@ impl<E: Environ> Backend<E> {
                 return Some(Value::Bool((input.0 & (1 << button.0)) != 0));
             }
             // ...
-            _ => None,
+            Binding::Intrinsic(Intrinsic::ArrayGet) => {
+                // ...
+                let Value::Arr(arr) = Self::eval_expr(environ, scopes, call.1.get(0)?, input)?
+                else {
+                    return None;
+                };
+                // ...
+                let Value::Num(idx) = Self::eval_expr(environ, scopes, call.1.get(1)?, input)?
+                else {
+                    return None;
+                };
+                // ...
+                (usize::try_from(idx.0))
+                    .ok()
+                    .and_then(|idx| arr.get(idx))
+                    .cloned()
+            }
+            // ...
+            Binding::Intrinsic(Intrinsic::ArraySet) => {
+                // ...
+                let Value::Arr(mut arr) = Self::eval_expr(environ, scopes, call.1.get(0)?, input)?
+                else {
+                    return None;
+                };
+                // ...
+                let Value::Num(idx) = Self::eval_expr(environ, scopes, call.1.get(1)?, input)?
+                else {
+                    return None;
+                };
+                // ...
+                let Value::Num(val) = Self::eval_expr(environ, scopes, call.1.get(2)?, input)?
+                else {
+                    return None;
+                };
+                // ...
+                (usize::try_from(idx.0)).ok().and_then(|idx| {
+                    *(arr.get_mut(idx)?) = Value::Num(val);
+                    Some(Value::Arr(arr))
+                })
+            }
+            // ...
+            Binding::Value(_, _) => None,
         }
     }
 
@@ -513,6 +570,9 @@ impl<E: Environ> Backend<E> {
         // println!("PRIM: {:?}, {:?}", scopes, prim);
         // ...
         match prim {
+            Prim::Arr(arr) => Some(Value::Arr(
+                (0..arr.0).into_iter().map(|_| Value::Num(Num(0))).collect(),
+            )),
             Prim::Num(num) => Some(Value::Num(num.clone())),
             Prim::Str(str) => Some(Value::Str(str.clone())),
             Prim::Bool(bool) => Some(Value::Bool(*bool)),
