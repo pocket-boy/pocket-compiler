@@ -47,6 +47,14 @@ pub struct Func<S>(
     pub Body<S>,
 );
 
+/// Represents a condition statement.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Cond<S>(pub Expr<S>, pub Body<S>);
+
+/// Represents an assignment statement.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Assn<S>(pub Name<S>, pub Expr<S>);
+
 /// Represents a code block.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Body<S>(pub Vec<Stmt<S>>);
@@ -83,6 +91,10 @@ pub enum Stmt<S> {
     Func(Func<S>),
     /// ...
     Call(Call<S>),
+    /// ...
+    Cond(Cond<S>),
+    /// ...
+    Assn(Assn<S>),
     /// ...
     Ret(Expr<S>),
 }
@@ -132,6 +144,19 @@ impl Parser {
             Self::name.map(Expr::Name),
         ))
         .parse(input)
+    }
+
+    /// ...
+    pub fn assn(input: &str) -> Result<'_, Assn<Borrowed<'_>>> {
+        // ...
+        let (input, name) = Self::name(input)?;
+        // ...
+        let (input, _) =
+            tuple((take_while(Self::space), tag("="), take_while(Self::space))).parse(input)?;
+        // ...
+        let (input, expr) = Self::expr(input)?;
+        // ...
+        Ok((input, Assn(name, expr)))
     }
 
     /// ...
@@ -221,6 +246,24 @@ impl Parser {
 
 impl Parser {
     /// ...
+    pub fn cond<'s>(&self) -> impl NomParser<&'s str, Cond<Borrowed<'s>>, ErrorTree<&'s str>> {
+        // ...
+        move |input| {
+            // Parse condition expression.
+            let (input, cond) = delimited(
+                tuple((tag("if"), take_while1(Self::space))),
+                Self::expr,
+                tuple((take_while(Self::space), tag(":"), line_ending)),
+            )
+            .parse(input)?;
+            // Parse condition body block.
+            let (input, body) = self.body().parse(input)?;
+            // Return as success.
+            Ok((input, Cond(cond, body)))
+        }
+    }
+
+    /// ...
     pub fn stmt<'s>(&self) -> impl NomParser<&'s str, Stmt<Borrowed<'s>>, ErrorTree<&'s str>> {
         // TODO: implement `Parser::stmt()`.
         move |input| {
@@ -229,6 +272,8 @@ impl Parser {
                 preceded(tuple((tag("return"), take_while(Self::space))), Self::expr)
                     .map(Stmt::Ret),
                 self.func().map(Stmt::Func),
+                self.cond().map(Stmt::Cond),
+                Self::assn.map(Stmt::Assn),
                 Self::bind.map(Stmt::Bind),
                 Self::call.map(Stmt::Call),
             ))
@@ -321,6 +366,18 @@ impl From<Call<Borrowed<'_>>> for Call<Owned> {
     }
 }
 
+impl From<Cond<Borrowed<'_>>> for Cond<Owned> {
+    fn from(value: Cond<Borrowed<'_>>) -> Self {
+        Self(value.0.into(), value.1.into())
+    }
+}
+
+impl From<Assn<Borrowed<'_>>> for Assn<Owned> {
+    fn from(value: Assn<Borrowed<'_>>) -> Self {
+        Self(value.0.into(), value.1.into())
+    }
+}
+
 impl From<Func<Borrowed<'_>>> for Func<Owned> {
     fn from(value: Func<Borrowed<'_>>) -> Self {
         Self(
@@ -371,6 +428,8 @@ impl From<Stmt<Borrowed<'_>>> for Stmt<Owned> {
         match value {
             Stmt::Bind(bind) => Self::Bind(bind.into()),
             Stmt::Func(func) => Self::Func(func.into()),
+            Stmt::Cond(cond) => Self::Cond(cond.into()),
+            Stmt::Assn(assn) => Self::Assn(assn.into()),
             Stmt::Call(call) => Self::Call(call.into()),
             Stmt::Ret(expr) => Self::Ret(expr.into()),
         }
