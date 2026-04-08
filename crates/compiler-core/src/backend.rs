@@ -1,22 +1,9 @@
-use std::ops::ControlFlow;
+use std::{cmp::Ordering, collections::HashMap, ops::ControlFlow};
 
-use im::HashMap;
+use derive_more::{From, TryInto};
 use nom_supreme::{error::ErrorTree, final_parser::final_parser};
 
-use crate::{
-    compiler::Compiler,
-    parser::{Bind, Expr, File, Func, Item, Name, Owned, Parser, Stmt},
-};
-
-/// ...
-pub struct Backend<E> {
-    /// ...
-    pub compiler: Compiler,
-    /// ...
-    pub environ: E,
-    /// ...
-    pub result: Option<File<Owned>>,
-}
+use crate::{compiler::Compiler, input::InputState, parser::*};
 
 /// ...
 pub trait Environ {
@@ -29,29 +16,63 @@ pub trait Environ {
 }
 
 /// ...
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Binding {
+pub type Scope = HashMap<Path<Owned>, Binding>;
+
+/// ...
+pub struct Backend<E> {
     /// ...
-    Value(Value),
+    pub compiler: Compiler,
     /// ...
-    Func(Func<Owned>),
+    pub environ: E,
+    /// ...
+    pub scopes: Option<Vec<Scope>>,
+    /// ...
+    pub input: InputState,
 }
 
 /// ...
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Intrinsic {
+    /// ...
+    Draw,
+    /// ...
+    Pressed,
+}
+
+/// ...
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, From, TryInto)]
 pub enum Value {
     /// ...
-    Num(usize),
+    Num(Num),
     /// ...
-    Str(String),
+    Str(Str),
     /// ...
     Bool(bool),
     /// ...
+    #[from(ignore)]
+    #[try_into(ignore)]
     Unit,
     /// ...
+    #[from(ignore)]
+    #[try_into(ignore)]
     Window,
     /// ...
+    #[from(ignore)]
+    #[try_into(ignore)]
     Input,
+}
+
+/// ...
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, From, TryInto)]
+pub enum Binding {
+    /// ...
+    #[from(ignore)]
+    #[try_into(ignore)]
+    Value(bool, Value),
+    /// ...
+    Func(Func<Owned>),
+    /// ...
+    Intrinsic(Intrinsic),
 }
 
 impl<E: Environ> Backend<E> {
@@ -60,214 +81,536 @@ impl<E: Environ> Backend<E> {
         // ...
         let mut parser = final_parser::<_, _, _, ErrorTree<&str>>(Parser::file);
         // ...
-        Self {
+        let Some(result) = compiler
+            .modules
+            .get("main")
+            .and_then(|module| dbg!(parser(module)).map(File::<Owned>::from).ok())
+        else {
+            // ...
+            return Self {
+                compiler: compiler.clone(),
+                environ,
+                scopes: None,
+                input: InputState(0),
+            };
+        };
+        // ...
+        let mut instance = Self {
             compiler: compiler.clone(),
             environ,
-            result: compiler
-                .modules
-                .get("main")
-                .and_then(|module| parser(module).map(File::into).ok()),
-        }
+            scopes: None,
+            input: InputState(0),
+        };
+        // ...
+        instance.prepare(&result);
+        // ...
+        instance
     }
 
     /// ...
-    pub fn render(&mut self) {
+    fn prepare(&mut self, file: &File<Owned>) {
         // ...
-        let Some(file) = self.result.clone() else {
-            return;
-        };
+        self.scopes = file
+            .0
+            .iter()
+            .try_fold(vec![HashMap::new()], |mut scopes, item| {
+                Self::eval_item(&mut self.environ, &mut scopes, item, InputState(0))?;
+                Some(scopes)
+            });
         // ...
-        let Some(mut bindings) = file.0.iter().try_fold(
+        if let Some(scopes) = &mut self.scopes {
             // ...
-            HashMap::<Name<Owned>, Binding>::new(),
+            scopes.last_mut().unwrap().insert(
+                Path(vec![
+                    Name(String::from("Window")),
+                    Name(String::from("draw")),
+                ]),
+                Binding::Intrinsic(Intrinsic::Draw),
+            );
             // ...
-            |mut map, Item(_, stmt)| match stmt {
+            scopes.last_mut().unwrap().insert(
+                Path(vec![
+                    Name(String::from("Input")),
+                    Name(String::from("pressed")),
+                ]),
+                Binding::Intrinsic(Intrinsic::Pressed),
+            );
+            // ...
+            for (offset, field) in ["RIGHT", "LEFT", "DOWN", "UP", "BUTTON_ONE", "BUTTON_TWO"]
+                .into_iter()
+                .enumerate()
+            {
                 // ...
-                Stmt::Bind(bind) => match bind {
-                    // ...
-                    Bind::Let(name, _, expr) => {
-                        map.insert(name.clone(), Binding::Value(self.eval_expr(&map, expr)?));
-                        Some(map)
-                    }
-                    // ...
-                    Bind::Var(name, _, expr) => {
-                        map.insert(name.clone(), Binding::Value(self.eval_expr(&map, expr)?));
-                        Some(map)
-                    }
-                },
-                // ...
-                Stmt::Func(func @ Func(name, _, _, _)) => {
-                    map.insert(name.clone(), Binding::Func(func.clone()));
-                    Some(map)
-                }
-                // ...
-                Stmt::Call(_) => Some(map),
-                // ...
-                Stmt::Ret(_) => Some(map),
-            },
-        ) else {
-            return;
-        };
-        // ...
-        let Some(Binding::Func(render)) = bindings.get(&Name("render".into())).cloned() else {
-            return;
-        };
-        // ...
-        if Some(&Name("Window".into())) != render.2.first().map(|(_, anno)| anno)
-            || Some(&Name("Input".into())) != render.2.get(1).map(|(_, anno)| anno)
-        {
-            return;
+                scopes.last_mut().unwrap().insert(
+                    Path(vec![Name(String::from("Input")), Name(String::from(field))]),
+                    Binding::Value(false, Value::Num(Num(offset as isize))),
+                );
+            }
         }
         // ...
-        println!("made to render");
-        // ...
-        bindings.insert(
-            render.2.first().unwrap().0.clone(),
-            Binding::Value(Value::Window),
-        );
-        bindings.insert(
-            render.2.get(1).unwrap().0.clone(),
-            Binding::Value(Value::Input),
-        );
-        // ...
-        self.eval_func(&bindings, &render);
+        println!("SCOPES: {:#?}", self.scopes);
     }
 }
 
 impl<E: Environ> Backend<E> {
-    // ...
-    fn eval_func(
-        &mut self,
-        map: &HashMap<Name<Owned>, Binding>,
-        func: &Func<Owned>,
-    ) -> Option<Value> {
+    pub fn render(&mut self, input: InputState) {
         // ...
-        match func.3.0.iter().try_fold(map.clone(), |mut map, stmt| {
+        let Some(scopes) = &mut self.scopes else {
+            return;
+        };
+        // ...
+        let Some(Binding::Func(render)) =
+            Self::bind_ref(scopes, &Path(vec![Name(String::from("render"))])).cloned()
+        else {
+            return;
+        };
+        // ...
+        let Some((window_arg, window_path)) = render.2.get(0).cloned() else {
+            return;
+        };
+        // ...
+        let Some((input_arg, input_path)) = render.2.get(1).cloned() else {
+            return;
+        };
+        // ...
+        if (window_path != Path(vec![Name(String::from("Window"))]))
+            || (input_path != Path(vec![Name(String::from("Input"))]))
+        {
+            return;
+        }
+        // ...
+        let mut scope = HashMap::new();
+        // ...
+        if window_arg != Name(String::from("_")) {
+            scope.insert(Path(vec![window_arg]), Binding::Value(false, Value::Window));
+        }
+        // ...
+        if input_arg != Name(String::from("_")) {
+            scope.insert(Path(vec![input_arg]), Binding::Value(false, Value::Input));
+        }
+        // ...
+        scopes.push(scope);
+        // ...
+        Self::eval_body(&mut self.environ, scopes, &render.3, input).expect("RUNTIME ERROR!");
+        // ...
+        scopes.pop();
+    }
+}
+
+impl<E: Environ> Backend<E> {
+    /// ...
+    fn bind_ref<'s>(scopes: &'s Vec<Scope>, path: &Path<Owned>) -> Option<&'s Binding> {
+        // ...
+        scopes.iter().rev().find_map(|scope| {
             // ...
-            match stmt {
-                // ...
-                Stmt::Bind(bind) => match bind {
-                    // ...
-                    Bind::Let(name, _, expr) => self
-                        .eval_expr(&map, expr)
-                        .map(|value| {
-                            map.insert(name.clone(), Binding::Value(value));
-                            ControlFlow::Continue(map)
-                        })
-                        .unwrap_or(ControlFlow::Break(None)),
-                    // ...
-                    Bind::Var(name, _, expr) => self
-                        .eval_expr(&map, expr)
-                        .map(|value| {
-                            map.insert(name.clone(), Binding::Value(value));
-                            ControlFlow::Continue(map)
-                        })
-                        .unwrap_or(ControlFlow::Break(None)),
-                },
-                // ...
-                Stmt::Func(func @ Func(name, _, _, _)) => {
-                    map.insert(name.clone(), Binding::Func(func.clone()));
-                    ControlFlow::Continue(map)
-                }
-                // ...
-                Stmt::Call(call) => {
-                    // ...
-                    if call.0 == Name("draw".into()) {
-                        // ...
-                        if call
-                            .1
-                            .first()
-                            .and_then(|window| self.eval_expr(&map, window))
-                            != Some(Value::Window)
-                        {
-                            return ControlFlow::Break(None);
-                        }
-                        // ...
-                        let Some(Value::Num(tile)) =
-                            call.1.get(1).and_then(|tile| self.eval_expr(&map, tile))
-                        else {
-                            return ControlFlow::Break(None);
-                        };
-                        // ...
-                        let Some(Value::Num(x)) =
-                            call.1.get(2).and_then(|x| self.eval_expr(&map, x))
-                        else {
-                            return ControlFlow::Break(None);
-                        };
-                        // ...
-                        let Some(Value::Num(y)) =
-                            call.1.get(3).and_then(|y| self.eval_expr(&map, y))
-                        else {
-                            return ControlFlow::Break(None);
-                        };
-                        // ...
-                        self.environ.draw_tile(tile as u32, x as u32, y as u32);
-                    }
-                    // ...
-                    let Some(Binding::Func(func)) = map.get(&call.0) else {
-                        return ControlFlow::Break(None);
-                    };
-                    // ...
-                    let Some(args) = func.2.iter().zip(call.1.iter()).try_fold(
-                        map.clone(),
-                        |mut args, ((name, _), expr)| {
-                            // ...
-                            args.insert(name.clone(), Binding::Value(self.eval_expr(&map, expr)?));
-                            // ...
-                            Some(args)
-                        },
-                    ) else {
-                        return ControlFlow::Break(None);
-                    };
-                    // ...
-                    self.eval_func(&args, func);
-                    // ...
-                    ControlFlow::Continue(map)
-                }
-                // ...
-                Stmt::Ret(expr) => self
-                    .eval_expr(&map, expr)
-                    .map(|value| ControlFlow::Break(Some(value)))
-                    .unwrap_or(ControlFlow::Break(None)),
-            }
-        }) {
-            ControlFlow::Continue(_) => Some(Value::Unit),
-            ControlFlow::Break(result) => result,
+            scope.get(path)
+        })
+    }
+
+    /// ...
+    fn bind_mut<'s>(scopes: &'s mut Vec<Scope>, path: &Path<Owned>) -> Option<&'s mut Binding> {
+        // ...
+        scopes.iter_mut().rev().find_map(|scope| {
+            // ...
+            scope.get_mut(path)
+        })
+    }
+}
+
+impl<E: Environ> Backend<E> {
+    /// ...
+    fn eval_item(
+        environ: &mut E,
+        scopes: &mut Vec<Scope>,
+        item: &Item<Owned>,
+        input: InputState,
+    ) -> Option<()> {
+        // ...
+        match item {
+            Item::Bind(_, bind) => Self::eval_bind(environ, scopes, bind, input),
+            Item::Func(_, func) => Self::eval_func(scopes, func),
         }
     }
 
-    // ...
-    fn eval_expr(
-        &mut self,
-        map: &HashMap<Name<Owned>, Binding>,
-        expr: &Expr<Owned>,
-    ) -> Option<Value> {
-        match expr {
-            Expr::Num(num) => Some(Value::Num(num.0)),
-            Expr::Str(str) => Some(Value::Str(str.0.clone())),
-            Expr::Bool(bool) => Some(Value::Bool(*bool)),
-            Expr::Name(name) => map.get(name).and_then(|binding| match binding {
-                Binding::Value(value) => Some(value.clone()),
-                Binding::Func(_) => None,
+    /// ...
+    fn eval_bind(
+        environ: &mut E,
+        scopes: &mut Vec<Scope>,
+        bind: &Bind<Owned>,
+        input: InputState,
+    ) -> Option<()> {
+        // ...
+        match bind {
+            // ...
+            Bind::Let(name, _, expr) => {
+                // ...
+                let value = Self::eval_expr(environ, scopes, expr, input)?;
+                // ...
+                scopes
+                    .last_mut()?
+                    .insert(Path(vec![name.clone()]), Binding::Value(false, value));
+                // ...
+                Some(())
+            }
+            // ...
+            Bind::Var(name, _, expr) => {
+                // ...
+                let value = Self::eval_expr(environ, scopes, expr, input)?;
+                // ...
+                scopes
+                    .last_mut()?
+                    .insert(Path(vec![name.clone()]), Binding::Value(true, value));
+                // ...
+                Some(())
+            }
+        }
+    }
+
+    /// ...
+    fn eval_assn(
+        environ: &mut E,
+        scopes: &mut Vec<Scope>,
+        assn: &Assn<Owned>,
+        input: InputState,
+    ) -> Option<()> {
+        // ...
+        let value = Self::eval_expr(environ, scopes, &assn.1, input)?;
+        // ...
+        let item = Self::bind_mut(scopes, &Path(vec![assn.0.clone()]))?;
+        // ...
+        *item = Binding::Value(true, value);
+        // ...
+        Some(())
+    }
+
+    /// ...
+    fn eval_func(scopes: &mut Vec<Scope>, func: &Func<Owned>) -> Option<()> {
+        // ...
+        scopes
+            .last_mut()?
+            .insert(Path(vec![func.0.clone()]), func.clone().into());
+        // ...
+        Some(())
+    }
+}
+
+impl<E: Environ> Backend<E> {
+    /// ...
+    fn eval_stmt(
+        environ: &mut E,
+        scopes: &mut Vec<Scope>,
+        stmt: &Stmt<Owned>,
+        input: InputState,
+    ) -> Option<Option<Value>> {
+        // ...
+        match stmt {
+            Stmt::Bind(bind) => Self::eval_bind(environ, scopes, bind, input).map(|_| None),
+            Stmt::Assn(assn) => Self::eval_assn(environ, scopes, assn, input).map(|_| None),
+            Stmt::Func(func) => Self::eval_func(scopes, func).map(|_| None),
+            Stmt::Call(call) => Self::eval_call(environ, scopes, call, input).map(|_| None),
+            Stmt::Cond(cond) => Self::eval_cond(environ, scopes, cond, input),
+            Stmt::Loop(fold) => Self::eval_fold(environ, scopes, fold, input),
+            Stmt::Ret(expr) => expr.as_ref().map_or(Some(Some(Value::Unit)), |expr| {
+                Self::eval_expr(environ, scopes, expr, input).map(Some)
             }),
-            Expr::Call(call) => {
+        }
+    }
+
+    /// ...
+    fn eval_cond(
+        environ: &mut E,
+        scopes: &mut Vec<Scope>,
+        cond: &Cond<Owned>,
+        input: InputState,
+    ) -> Option<Option<Value>> {
+        // ...
+        let Value::Bool(pred) = Self::eval_expr(environ, scopes, &cond.0, input)? else {
+            // ...
+            return None;
+        };
+        // ...
+        if pred {
+            // ...
+            return match Self::eval_body_inner(environ, scopes, &cond.1, input) {
+                ControlFlow::Continue(_) => Some(None),
+                ControlFlow::Break(value) => value.map(Some),
+            };
+        }
+        // ...
+        Some(None)
+    }
+
+    /// ...
+    fn eval_fold(
+        environ: &mut E,
+        scopes: &mut Vec<Scope>,
+        fold: &Loop<Owned>,
+        input: InputState,
+    ) -> Option<Option<Value>> {
+        // ...
+        loop {
+            // ...
+            let Value::Bool(pred) = Self::eval_expr(environ, scopes, &fold.0, input)? else {
                 // ...
-                let Some(Binding::Func(func)) = map.get(&call.0) else {
-                    println!("missing func: {:?}", call.0);
-                    return None;
-                };
+                return None;
+            };
+            // ...
+            if pred {
                 // ...
-                let args = func.2.iter().zip(call.1.iter()).try_fold(
-                    map.clone(),
-                    |mut args, ((name, _), expr)| {
+                match Self::eval_body_inner(environ, scopes, &fold.1, input) {
+                    ControlFlow::Continue(_) => {}
+                    ControlFlow::Break(value) => return value.map(Some),
+                }
+            } else {
+                // ...
+                return Some(None);
+            }
+        }
+    }
+}
+
+impl<E: Environ> Backend<E> {
+    /// ...
+    fn eval_body_inner<'s>(
+        environ: &mut E,
+        scopes: &'s mut Vec<Scope>,
+        body: &Body<Owned>,
+        input: InputState,
+    ) -> ControlFlow<Option<Value>, &'s mut Vec<HashMap<Path<String>, Binding>>> {
+        // ...
+        body.0.iter().try_fold(scopes, |scopes, stmt| {
+            // ...
+            Self::eval_stmt(environ, scopes, stmt, input).map_or(
+                // Break on invalid statement.
+                ControlFlow::Break(None),
+                // Evaluate the statement return result.
+                |result| {
+                    result.map_or(
+                        // Continue without breaking.
+                        ControlFlow::Continue(scopes),
+                        // Break on early return.
+                        |value| ControlFlow::Break(Some(value)),
+                    )
+                },
+            )
+        })
+    }
+}
+
+impl<E: Environ> Backend<E> {
+    /// ...
+    fn eval_path(scopes: &Vec<Scope>, path: &Path<Owned>) -> Option<Value> {
+        // ...
+        Self::bind_ref(scopes, path).map_or(None, |binding| match binding {
+            Binding::Value(_, value) => Some(value.clone()),
+            _ => None,
+        })
+    }
+
+    /// ...
+    fn eval_body(
+        environ: &mut E,
+        scopes: &mut Vec<Scope>,
+        body: &Body<Owned>,
+        input: InputState,
+    ) -> Option<Value> {
+        // ...
+        match Self::eval_body_inner(environ, scopes, body, input) {
+            // Default to returning `unit` value.
+            ControlFlow::Continue(_) => Some(Value::Unit),
+            // Return with error or value.
+            ControlFlow::Break(value) => value,
+        }
+    }
+
+    /// ...
+    fn eval_call(
+        environ: &mut E,
+        scopes: &mut Vec<Scope>,
+        call: &Call<Owned>,
+        input: InputState,
+    ) -> Option<Value> {
+        // println!("CALL: {:?}, {:?}", scopes, call);
+        // ...
+        match Self::bind_ref(scopes, &call.0)?.clone() {
+            // ...
+            Binding::Func(func) => {
+                // ...
+                let (scopes, scope) = func.2.iter().zip(call.1.iter()).try_fold(
+                    (scopes, HashMap::new()),
+                    |(scopes, mut scope), ((name, _), expr)| {
                         // ...
-                        args.insert(name.clone(), Binding::Value(self.eval_expr(&map, expr)?));
+                        let value = Self::eval_expr(environ, scopes, expr, input)?;
                         // ...
-                        Some(args)
+                        scope.insert(Path(vec![name.clone()]), Binding::Value(false, value));
+                        // ...
+                        Some((scopes, scope))
                     },
                 )?;
                 // ...
-                self.eval_func(&args, func)
+                scopes.push(scope);
+                // ...
+                let result = Self::eval_body(environ, scopes, &func.3, input)?;
+                // ...
+                scopes.pop();
+                // ...
+                Some(result)
+            }
+            // ...
+            Binding::Intrinsic(Intrinsic::Draw) => {
+                // ...
+                let Value::Window = Self::eval_expr(environ, scopes, call.1.get(0)?, input)? else {
+                    return None;
+                };
+                // ...
+                let Value::Num(tile) = Self::eval_expr(environ, scopes, call.1.get(1)?, input)?
+                else {
+                    return None;
+                };
+                // ...
+                let Value::Num(x) = Self::eval_expr(environ, scopes, call.1.get(2)?, input)? else {
+                    return None;
+                };
+                // ...
+                let Value::Num(y) = Self::eval_expr(environ, scopes, call.1.get(3)?, input)? else {
+                    return None;
+                };
+                // ...
+                environ.draw_tile(tile.0 as _, x.0 as _, y.0 as _);
+                // ...
+                Some(Value::Unit)
+            }
+            // ...
+            Binding::Intrinsic(Intrinsic::Pressed) => {
+                // ...
+                let Value::Input = Self::eval_expr(environ, scopes, call.1.get(0)?, input)? else {
+                    return None;
+                };
+                // ...
+                let Value::Num(button) = Self::eval_expr(environ, scopes, call.1.get(1)?, input)?
+                else {
+                    return None;
+                };
+                // ...
+                if button.0 < 0 || button.0 > 5 {
+                    return None;
+                }
+                // ...
+                return Some(Value::Bool((input.0 & (1 << button.0)) != 0));
+            }
+            // ...
+            _ => None,
+        }
+    }
+
+    /// ...
+    fn eval_prim(
+        environ: &mut E,
+        scopes: &mut Vec<Scope>,
+        prim: &Prim<Owned>,
+        input: InputState,
+    ) -> Option<Value> {
+        // println!("PRIM: {:?}, {:?}", scopes, prim);
+        // ...
+        match prim {
+            Prim::Num(num) => Some(Value::Num(num.clone())),
+            Prim::Str(str) => Some(Value::Str(str.clone())),
+            Prim::Bool(bool) => Some(Value::Bool(*bool)),
+            Prim::Path(path) => Self::eval_path(scopes, path),
+            Prim::Call(call) => Self::eval_call(environ, scopes, call, input),
+            Prim::Sect(expr) => Self::eval_expr(environ, scopes, expr, input),
+        }
+    }
+
+    /// ...
+    fn eval_expr(
+        environ: &mut E,
+        scopes: &mut Vec<Scope>,
+        expr: &Expr<Owned>,
+        input: InputState,
+    ) -> Option<Value> {
+        // println!("EXPR: {:?}, {:?}", scopes, expr);
+        // ...
+        match expr {
+            Expr::Prim(prim) => Self::eval_prim(environ, scopes, prim, input),
+            Expr::Comp(comp) => match Self::eval_prim(environ, scopes, comp, input) {
+                Some(Value::Bool(value)) => Some(Value::Bool(!value)),
+                _ => None,
+            },
+            Expr::And(lhs, rhs) => {
+                match (
+                    Self::eval_prim(environ, scopes, lhs, input),
+                    Self::eval_prim(environ, scopes, rhs, input),
+                ) {
+                    (Some(Value::Bool(lhs)), Some(Value::Bool(rhs))) => {
+                        Some(Value::Bool(lhs && rhs))
+                    }
+                    _ => None,
+                }
+            }
+            Expr::Orr(lhs, rhs) => {
+                match (
+                    Self::eval_prim(environ, scopes, lhs, input),
+                    Self::eval_prim(environ, scopes, rhs, input),
+                ) {
+                    (Some(Value::Bool(lhs)), Some(Value::Bool(rhs))) => {
+                        Some(Value::Bool(lhs || rhs))
+                    }
+                    _ => None,
+                }
+            }
+            Expr::Add(lhs, rhs) => {
+                match (
+                    Self::eval_prim(environ, scopes, lhs, input),
+                    Self::eval_prim(environ, scopes, rhs, input),
+                ) {
+                    (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
+                        Some(Value::Num((lhs.0 + rhs.0).into()))
+                    }
+                    _ => None,
+                }
+            }
+            Expr::Sub(lhs, rhs) => {
+                match (
+                    Self::eval_prim(environ, scopes, lhs, input),
+                    Self::eval_prim(environ, scopes, rhs, input),
+                ) {
+                    (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
+                        Some(Value::Num((lhs.0 - rhs.0).into()))
+                    }
+                    _ => None,
+                }
+            }
+            Expr::Mul(lhs, rhs) => {
+                match (
+                    Self::eval_prim(environ, scopes, lhs, input),
+                    Self::eval_prim(environ, scopes, rhs, input),
+                ) {
+                    (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
+                        Some(Value::Num((lhs.0 * rhs.0).into()))
+                    }
+                    _ => None,
+                }
+            }
+            Expr::Ord(comp, ordering, lhs, rhs) => {
+                match (
+                    Self::eval_prim(environ, scopes, lhs, input),
+                    Self::eval_prim(environ, scopes, rhs, input),
+                ) {
+                    (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
+                        let value = match ordering {
+                            Ordering::Less => Some(lhs.0 < rhs.0),
+                            Ordering::Equal => Some(lhs.0 == rhs.0),
+                            Ordering::Greater => Some(lhs.0 > rhs.0),
+                        }?;
+                        Some(if *comp {
+                            Value::Bool(!value)
+                        } else {
+                            Value::Bool(value)
+                        })
+                    }
+                    _ => None,
+                }
             }
         }
     }

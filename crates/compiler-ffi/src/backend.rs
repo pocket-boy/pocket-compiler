@@ -1,4 +1,4 @@
-use compiler_core::backend::Backend;
+use compiler_core::{backend::Backend, input::InputState};
 
 use crate::{CompilerHandle, environ::ExternEnviron};
 
@@ -29,10 +29,10 @@ impl BackendHandle {
 impl BackendHandle {
     /// ...
     #[unsafe(no_mangle)]
-    unsafe extern "C" fn backend_render(self) {
+    unsafe extern "C" fn backend_render(self, input: u8) {
         // ...
         let backend = unsafe { self.0.as_mut().unwrap() };
         // ...
-        backend.render();
+        backend.render(InputState(input));
     }
 }

@@ -1,13 +1,21 @@
+use std::cmp::Ordering;
+
+use derive_more::{From, TryInto};
 use nom::{
     IResult, Parser as NomParser,
     branch::alt,
     bytes::complete::{is_not, take_while, take_while1},
     character::complete::{alpha1, digit1, line_ending},
     combinator::{all_consuming, opt, recognize},
-    multi::{many_m_n, many0, separated_list0},
+    multi::{many_m_n, many0, separated_list0, separated_list1},
     sequence::{delimited, preceded, separated_pair, terminated, tuple},
 };
 use nom_supreme::{ParserExt as _, error::ErrorTree, tag::complete::tag};
+
+/// Result type for parsing.
+pub type Result<'s, T> = IResult<&'s str, T, ErrorTree<&'s str>>;
+
+////////////////////////////////////////////////////////////
 
 /// ...
 pub type Borrowed<'s> = &'s str;
@@ -15,53 +23,65 @@ pub type Borrowed<'s> = &'s str;
 /// ...
 pub type Owned = String;
 
-/// Result type for parsing.
-pub type Result<'s, T> = IResult<&'s str, T, ErrorTree<&'s str>>;
+////////////////////////////////////////////////////////////
 
-/// Number literal.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub struct Num(pub usize);
-
-/// String literal.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub struct Str(pub String);
-
-/// Current parser state.
+/// ...
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Parser(pub usize);
 
-/// Represents an identifier.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+////////////////////////////////////////////////////////////
+
+/// ...
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, From)]
+pub struct Num(pub isize);
+
+/// ...
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, From)]
+pub struct Str(pub String);
+
+////////////////////////////////////////////////////////////
+
+/// ...
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Name<S>(pub S);
 
-/// Represents an identifier.
+/// ...
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Call<S>(pub Name<S>, pub Vec<Expr<S>>);
+pub struct Path<S>(pub Vec<Name<S>>);
 
-/// Represents a function definition.
+/// ...
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Func<S>(
-    pub Name<S>,
-    pub Name<S>,
-    pub Vec<(Name<S>, Name<S>)>,
-    pub Body<S>,
-);
+pub struct Call<S>(pub Path<S>, pub Vec<Expr<S>>);
 
-/// Represents a code block.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Body<S>(pub Vec<Stmt<S>>);
-
-/// Represents a top-level item.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Item<S>(pub bool, pub Stmt<S>);
-
-/// Represents a file-based module.
+/// ...
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct File<S>(pub Vec<Item<S>>);
 
-/// Represents an expression.
+/// ...
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Expr<S> {
+pub struct Assn<S>(pub Name<S>, pub Expr<S>);
+
+/// ...
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Bind<S> {
+    /// ...
+    Let(Name<S>, Option<Path<S>>, Expr<S>),
+    /// ...
+    Var(Name<S>, Option<Path<S>>, Expr<S>),
+}
+
+/// ...
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Item<S> {
+    /// ...
+    Bind(bool, Bind<S>),
+    /// ...
+    Func(bool, Func<S>),
+}
+
+/// ...
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, TryInto, From)]
+pub enum Prim<S> {
     /// ...
     Num(Num),
     /// ...
@@ -69,32 +89,78 @@ pub enum Expr<S> {
     /// ...
     Bool(bool),
     /// ...
-    Name(Name<S>),
+    Path(Path<S>),
     /// ...
     Call(Call<S>),
+    /// ...
+    Sect(Box<Expr<S>>),
 }
 
-/// Reprents a component of a code block.
+/// ...
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Expr<S> {
+    /// ...
+    Prim(Prim<S>),
+    /// ...
+    Comp(Prim<S>),
+    /// ...
+    And(Prim<S>, Prim<S>),
+    /// ...
+    Orr(Prim<S>, Prim<S>),
+    /// ...
+    Add(Prim<S>, Prim<S>),
+    /// ...
+    Sub(Prim<S>, Prim<S>),
+    /// ...
+    Mul(Prim<S>, Prim<S>),
+    /// ...
+    Ord(bool, Ordering, Prim<S>, Prim<S>),
+}
+
+////////////////////////////////////////////////////////////
+
+/// ...
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Cond<S>(pub Expr<S>, pub Body<S>);
+
+/// ...
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Loop<S>(pub Expr<S>, pub Body<S>);
+
+/// ...
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Body<S>(pub Vec<Stmt<S>>);
+
+/// ...
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Func<S>(
+    pub Name<S>,
+    pub Path<S>,
+    pub Vec<(Name<S>, Path<S>)>,
+    pub Body<S>,
+);
+
+/// ...
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, From, TryInto)]
 pub enum Stmt<S> {
     /// ...
     Bind(Bind<S>),
+    /// ...
+    Assn(Assn<S>),
     /// ...
     Func(Func<S>),
     /// ...
     Call(Call<S>),
     /// ...
-    Ret(Expr<S>),
+    Cond(Cond<S>),
+    /// ...
+    Loop(Loop<S>),
+    /// ...
+    #[from(ignore)]
+    Ret(Option<Expr<S>>),
 }
 
-/// Represents an assignment.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Bind<S> {
-    /// ...
-    Let(Name<S>, Option<Name<S>>, Expr<S>),
-    /// ...
-    Var(Name<S>, Option<Name<S>>, Expr<S>),
-}
+////////////////////////////////////////////////////////////
 
 impl Parser {
     /// ...
@@ -119,21 +185,9 @@ impl Parser {
             .map(|s| Str(String::from(s)))
             .parse(input)
     }
+}
 
-    /// ...
-    pub fn expr(input: &str) -> Result<'_, Expr<Borrowed<'_>>> {
-        // NOTE: Currently, a boolean, number, identifier, or call expression.
-        alt((
-            tag("true").value(Expr::Bool(true)),
-            tag("false").value(Expr::Bool(false)),
-            Self::str.map(Expr::Str),
-            Self::num.map(Expr::Num),
-            Self::call.map(Expr::Call),
-            Self::name.map(Expr::Name),
-        ))
-        .parse(input)
-    }
-
+impl Parser {
     /// ...
     pub fn name(input: &str) -> Result<'_, Name<Borrowed<'_>>> {
         // Recognise identifier pattern.
@@ -146,9 +200,15 @@ impl Parser {
     }
 
     /// ...
+    pub fn path(input: &str) -> Result<'_, Path<Borrowed<'_>>> {
+        // ...
+        separated_list1(tag("."), Self::name).map(Path).parse(input)
+    }
+
+    /// ...
     pub fn call(input: &str) -> Result<'_, Call<Borrowed<'_>>> {
         // ...
-        let (input, name) = terminated(Self::name, take_while(Self::space)).parse(input)?;
+        let (input, path) = terminated(Self::path, take_while(Self::space)).parse(input)?;
         // ...
         let (input, args) = delimited(
             tag("("),
@@ -160,19 +220,30 @@ impl Parser {
         )
         .parse(input)?;
         // ...
-        Ok((input, Call(name, args)))
+        Ok((input, Call(path, args)))
     }
 
     /// ...
-    pub fn item(input: &str) -> Result<'_, Item<Borrowed<'_>>> {
-        // Parse optional visibility specifier.
-        let (input, local) =
-            opt(terminated(tag("local"), take_while1(Self::space))).parse(input)?;
-        // Parse item content.
-        Self::default()
-            .stmt()
-            .map(|stmt| Item(local.is_some(), stmt))
-            .parse(input)
+    pub fn file(input: &str) -> Result<'_, File<Borrowed<'_>>> {
+        all_consuming(separated_list0(
+            line_ending,
+            alt((Self::item.map(Some), take_while(Self::space).value(None))),
+        ))
+        .map(|items| File(items.into_iter().flatten().collect()))
+        .parse(input)
+    }
+
+    /// ...
+    pub fn assn(input: &str) -> Result<'_, Assn<Borrowed<'_>>> {
+        // ...
+        let (input, name) = Self::name.parse(input)?;
+        // ...
+        let (input, _) =
+            tuple((take_while(Self::space), tag("="), take_while(Self::space))).parse(input)?;
+        // ...
+        let (input, expr) = Self::expr.parse(input)?;
+        // ...
+        Ok((input, Assn(name, expr)))
     }
 
     /// ...
@@ -187,7 +258,7 @@ impl Parser {
             alt((
                 delimited(
                     tuple((tag(":"), take_while(Self::space))),
-                    Self::name,
+                    Self::path,
                     tuple((take_while(Self::space), tag("="))),
                 )
                 .map(Some),
@@ -209,69 +280,125 @@ impl Parser {
     }
 
     /// ...
-    pub fn file(input: &str) -> Result<'_, File<Borrowed<'_>>> {
-        all_consuming(separated_list0(
-            line_ending,
-            alt((Self::item.map(Some), take_while(Self::space).value(None))),
+    pub fn item(input: &str) -> Result<'_, Item<Borrowed<'_>>> {
+        // Parse optional visibility specifier.
+        let (input, local) =
+            opt(terminated(tag("local"), take_while1(Self::space))).parse(input)?;
+        // Parse item content.
+        alt((
+            Self::bind.map(|bind| Item::Bind(local.is_some(), bind)),
+            Self::default()
+                .func()
+                .map(|func| Item::Func(local.is_some(), func)),
         ))
-        .map(|items| File(items.into_iter().flatten().collect()))
+        .parse(input)
+    }
+
+    /// ...
+    pub fn prim(input: &str) -> Result<'_, Prim<Borrowed<'_>>> {
+        // NOTE: Currently, a boolean, number, identifier, or call expression.
+        alt((
+            // ...
+            delimited(
+                tuple((tag("("), take_while(Self::space))),
+                Self::expr,
+                tuple((take_while(Self::space), tag(")"))),
+            )
+            .map(|expr| Prim::Sect(Box::new(expr))),
+            // ...
+            tag("true").value(Prim::Bool(true)),
+            tag("false").value(Prim::Bool(false)),
+            Self::str.map(From::from),
+            Self::num.map(From::from),
+            Self::call.map(From::from),
+            Self::path.map(From::from),
+        ))
+        .parse(input)
+    }
+
+    /// ...
+    pub fn expr(input: &str) -> Result<'_, Expr<Borrowed<'_>>> {
+        // TODO: implement `Parser::expr()`.
+        alt((
+            // ...
+            preceded(tuple((tag("!"), take_while(Self::space))), Self::prim).map(Expr::Comp),
+            // ...
+            tuple((
+                Self::prim,
+                delimited(
+                    take_while(Self::space),
+                    alt((
+                        tag("+"),
+                        tag("-"),
+                        tag("*"),
+                        tag("=="),
+                        tag("!="),
+                        tag(">="),
+                        tag("<="),
+                        tag(">"),
+                        tag("<"),
+                        tag("&&"),
+                        tag("||"),
+                    )),
+                    take_while(Self::space),
+                ),
+                Self::prim,
+            ))
+            .map(|(lhs, op, rhs)| match op {
+                "+" => Expr::Add(lhs, rhs),
+                "-" => Expr::Sub(lhs, rhs),
+                "*" => Expr::Mul(lhs, rhs),
+                "&&" => Expr::And(lhs, rhs),
+                "||" => Expr::Orr(lhs, rhs),
+                ">" => Expr::Ord(false, Ordering::Greater, lhs, rhs),
+                "<" => Expr::Ord(false, Ordering::Less, lhs, rhs),
+                "==" => Expr::Ord(false, Ordering::Equal, lhs, rhs),
+                ">=" => Expr::Ord(true, Ordering::Less, lhs, rhs),
+                "<=" => Expr::Ord(true, Ordering::Greater, lhs, rhs),
+                "!=" => Expr::Ord(true, Ordering::Equal, lhs, rhs),
+                _ => unreachable!(),
+            }),
+            // ...
+            Self::prim.map(Expr::Prim),
+        ))
         .parse(input)
     }
 }
 
 impl Parser {
     /// ...
-    pub fn stmt<'s>(&self) -> impl NomParser<&'s str, Stmt<Borrowed<'s>>, ErrorTree<&'s str>> {
-        // TODO: implement `Parser::stmt()`.
+    pub fn cond<'s>(&self) -> impl NomParser<&'s str, Cond<Borrowed<'s>>, ErrorTree<&'s str>> {
+        // TODO: implement `Parser::cond()`.
         move |input| {
-            // NOTE: Currently, either a function definition, return statement, or binding.
-            alt((
-                preceded(tuple((tag("return"), take_while(Self::space))), Self::expr)
-                    .map(Stmt::Ret),
-                self.func().map(Stmt::Func),
-                Self::bind.map(Stmt::Bind),
-                Self::call.map(Stmt::Call),
-            ))
-            .parse(input)
+            // ...
+            let (input, cond) = delimited(
+                tuple((tag("if"), take_while1(Self::space))),
+                Self::expr,
+                tuple((take_while(Self::space), tag(":"), line_ending)),
+            )
+            .parse(input)?;
+            // ...
+            let (input, body) = self.body().parse(input)?;
+            // ...
+            Ok((input, Cond(cond, body)))
         }
     }
 
     /// ...
-    pub fn func<'s>(&self) -> impl NomParser<&'s str, Func<Borrowed<'s>>, ErrorTree<&'s str>> {
-        // TODO: implement `Parser::func()`.
+    pub fn fold<'s>(&self) -> impl NomParser<&'s str, Loop<Borrowed<'s>>, ErrorTree<&'s str>> {
+        // TODO: implement `Parser::fold()`.
         move |input| {
-            // Parse function identifier.
-            let (input, name) =
-                preceded(tuple((tag("def"), take_while1(Self::space))), Self::name).parse(input)?;
-            // Parse function parameter list.
-            let (input, params) = delimited(
-                tuple((take_while(Self::space), tag("("))),
-                separated_list0(
-                    tag(","),
-                    delimited(
-                        take_while(Self::space),
-                        separated_pair(
-                            Self::name,
-                            tuple((take_while(Self::space), tag(":"), take_while(Self::space))),
-                            Self::name,
-                        ),
-                        take_while(Self::space),
-                    ),
-                ),
-                tag(")"),
-            )
-            .parse(input)?;
-            // Parse function type annotation.
-            let (input, anno) = delimited(
-                tuple((take_while(Self::space), tag("->"), take_while(Self::space))),
-                Self::name,
+            // ...
+            let (input, cond) = delimited(
+                tuple((tag("while"), take_while1(Self::space))),
+                Self::expr,
                 tuple((take_while(Self::space), tag(":"), line_ending)),
             )
             .parse(input)?;
-            // Parse function body block.
+            // ...
             let (input, body) = self.body().parse(input)?;
-            // Return as success.
-            Ok((input, Func(name, anno, params, body)))
+            // ...
+            Ok((input, Loop(cond, body)))
         }
     }
 
@@ -304,6 +431,71 @@ impl Parser {
             ))
         }
     }
+
+    /// ...
+    pub fn func<'s>(&self) -> impl NomParser<&'s str, Func<Borrowed<'s>>, ErrorTree<&'s str>> {
+        // TODO: implement `Parser::func()`.
+        move |input| {
+            // Parse function identifier.
+            let (input, name) =
+                preceded(tuple((tag("def"), take_while1(Self::space))), Self::name).parse(input)?;
+            // Parse function parameter list.
+            let (input, params) = delimited(
+                tuple((take_while(Self::space), tag("("))),
+                separated_list0(
+                    tag(","),
+                    delimited(
+                        take_while(Self::space),
+                        separated_pair(
+                            Self::name,
+                            tuple((take_while(Self::space), tag(":"), take_while(Self::space))),
+                            Self::path,
+                        ),
+                        take_while(Self::space),
+                    ),
+                ),
+                tag(")"),
+            )
+            .parse(input)?;
+            // Parse function type annotation.
+            let (input, anno) = delimited(
+                tuple((take_while(Self::space), tag("->"), take_while(Self::space))),
+                Self::path,
+                tuple((take_while(Self::space), tag(":"), line_ending)),
+            )
+            .parse(input)?;
+            // Parse function body block.
+            let (input, body) = self.body().parse(input)?;
+            // Return as success.
+            Ok((input, Func(name, anno, params, body)))
+        }
+    }
+
+    /// ...
+    pub fn stmt<'s>(&self) -> impl NomParser<&'s str, Stmt<Borrowed<'s>>, ErrorTree<&'s str>> {
+        // TODO: implement `Parser::stmt()`.
+        move |input| {
+            // NOTE: Currently, either a function definition, return statement, call expression, or binding.
+            alt((
+                // preceded(tuple((tag("return"), take_while(Self::space))), Self::expr)
+                //     .map(Stmt::Ret),
+                // ...
+                tuple((
+                    tag("return"),
+                    opt(preceded(take_while(Self::space), Self::expr)),
+                ))
+                .map(|(_, expr)| Stmt::Ret(expr)),
+                // ...
+                self.func().map(From::from),
+                self.cond().map(From::from),
+                self.fold().map(From::from),
+                Self::bind.map(From::from),
+                Self::assn.map(From::from),
+                Self::call.map(From::from),
+            ))
+            .parse(input)
+        }
+    }
 }
 
 impl From<Name<Borrowed<'_>>> for Name<Owned> {
@@ -312,11 +504,17 @@ impl From<Name<Borrowed<'_>>> for Name<Owned> {
     }
 }
 
+impl From<Path<Borrowed<'_>>> for Path<Owned> {
+    fn from(value: Path<Borrowed<'_>>) -> Self {
+        Self(value.0.into_iter().map(From::from).collect())
+    }
+}
+
 impl From<Call<Borrowed<'_>>> for Call<Owned> {
     fn from(value: Call<Borrowed<'_>>) -> Self {
         Self(
             value.0.into(),
-            value.1.into_iter().map(|expr| expr.into()).collect(),
+            value.1.into_iter().map(From::from).collect(),
         )
     }
 }
@@ -336,6 +534,18 @@ impl From<Func<Borrowed<'_>>> for Func<Owned> {
     }
 }
 
+impl From<Cond<Borrowed<'_>>> for Cond<Owned> {
+    fn from(value: Cond<Borrowed<'_>>) -> Self {
+        Self(value.0.into(), value.1.into())
+    }
+}
+
+impl From<Loop<Borrowed<'_>>> for Loop<Owned> {
+    fn from(value: Loop<Borrowed<'_>>) -> Self {
+        Self(value.0.into(), value.1.into())
+    }
+}
+
 impl From<Body<Borrowed<'_>>> for Body<Owned> {
     fn from(value: Body<Borrowed<'_>>) -> Self {
         Self(value.0.into_iter().map(|stmt| stmt.into()).collect())
@@ -344,7 +554,10 @@ impl From<Body<Borrowed<'_>>> for Body<Owned> {
 
 impl From<Item<Borrowed<'_>>> for Item<Owned> {
     fn from(value: Item<Borrowed<'_>>) -> Self {
-        Self(value.0, value.1.into())
+        match value {
+            Item::Bind(local, bind) => Self::Bind(local, bind.into()),
+            Item::Func(local, func) => Self::Func(local, func.into()),
+        }
     }
 }
 
@@ -354,14 +567,36 @@ impl From<File<Borrowed<'_>>> for File<Owned> {
     }
 }
 
+impl From<Assn<Borrowed<'_>>> for Assn<Owned> {
+    fn from(value: Assn<Borrowed<'_>>) -> Self {
+        Self(value.0.into(), value.1.into())
+    }
+}
+
+impl From<Prim<Borrowed<'_>>> for Prim<Owned> {
+    fn from(value: Prim<Borrowed<'_>>) -> Self {
+        match value {
+            Prim::Num(num) => Self::Num(num),
+            Prim::Str(str) => Self::Str(str),
+            Prim::Bool(bool) => Self::Bool(bool),
+            Prim::Path(path) => Self::Path(path.into()),
+            Prim::Call(call) => Self::Call(call.into()),
+            Prim::Sect(sect) => Self::Sect(Box::new(Expr::<Owned>::from(*sect))),
+        }
+    }
+}
+
 impl From<Expr<Borrowed<'_>>> for Expr<Owned> {
     fn from(value: Expr<Borrowed<'_>>) -> Self {
         match value {
-            Expr::Num(num) => Self::Num(num),
-            Expr::Str(str) => Self::Str(str),
-            Expr::Bool(bool) => Self::Bool(bool),
-            Expr::Name(name) => Self::Name(name.into()),
-            Expr::Call(call) => Self::Call(call.into()),
+            Expr::Prim(prim) => Self::Prim(prim.into()),
+            Expr::Comp(comp) => Self::Comp(comp.into()),
+            Expr::And(lhs, rhs) => Self::And(lhs.into(), rhs.into()),
+            Expr::Orr(lhs, rhs) => Self::Orr(lhs.into(), rhs.into()),
+            Expr::Add(lhs, rhs) => Self::Add(lhs.into(), rhs.into()),
+            Expr::Sub(lhs, rhs) => Self::Sub(lhs.into(), rhs.into()),
+            Expr::Mul(lhs, rhs) => Self::Mul(lhs.into(), rhs.into()),
+            Expr::Ord(comp, ord, lhs, rhs) => Self::Ord(comp, ord, lhs.into(), rhs.into()),
         }
     }
 }
@@ -370,9 +605,12 @@ impl From<Stmt<Borrowed<'_>>> for Stmt<Owned> {
     fn from(value: Stmt<Borrowed<'_>>) -> Self {
         match value {
             Stmt::Bind(bind) => Self::Bind(bind.into()),
+            Stmt::Assn(assn) => Self::Assn(assn.into()),
             Stmt::Func(func) => Self::Func(func.into()),
             Stmt::Call(call) => Self::Call(call.into()),
-            Stmt::Ret(expr) => Self::Ret(expr.into()),
+            Stmt::Cond(cond) => Self::Cond(cond.into()),
+            Stmt::Loop(fold) => Self::Loop(fold.into()),
+            Stmt::Ret(expr) => Self::Ret(expr.map(From::from)),
         }
     }
 }
@@ -381,10 +619,10 @@ impl From<Bind<Borrowed<'_>>> for Bind<Owned> {
     fn from(value: Bind<Borrowed<'_>>) -> Self {
         match value {
             Bind::Let(name, anno, expr) => {
-                Self::Let(name.into(), anno.map(Name::into), expr.into())
+                Self::Let(name.into(), anno.map(From::from), expr.into())
             }
             Bind::Var(name, anno, expr) => {
-                Self::Var(name.into(), anno.map(Name::into), expr.into())
+                Self::Var(name.into(), anno.map(From::from), expr.into())
             }
         }
     }
