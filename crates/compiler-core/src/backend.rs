@@ -592,6 +592,33 @@ impl<E: Environ> Backend<E> {
                     _ => None,
                 }
             }
+            Expr::BitShl(lhs, rhs) => match (
+                Self::eval_prim(environ, scopes, lhs, input),
+                Self::eval_prim(environ, scopes, rhs, input),
+            ) {
+                (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
+                    Some(Value::Num((lhs.0 << rhs.0).into()))
+                }
+                _ => None,
+            },
+            Expr::BitAnd(lhs, rhs) => match (
+                Self::eval_prim(environ, scopes, lhs, input),
+                Self::eval_prim(environ, scopes, rhs, input),
+            ) {
+                (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
+                    Some(Value::Num((lhs.0 & rhs.0).into()))
+                }
+                _ => None,
+            },
+            Expr::BitOrr(lhs, rhs) => match (
+                Self::eval_prim(environ, scopes, lhs, input),
+                Self::eval_prim(environ, scopes, rhs, input),
+            ) {
+                (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
+                    Some(Value::Num((lhs.0 | rhs.0).into()))
+                }
+                _ => None,
+            },
             Expr::Ord(comp, ordering, lhs, rhs) => {
                 match (
                     Self::eval_prim(environ, scopes, lhs, input),

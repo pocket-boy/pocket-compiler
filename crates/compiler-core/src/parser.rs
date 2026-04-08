@@ -4,7 +4,7 @@ use derive_more::{From, TryInto};
 use nom::{
     IResult, Parser as NomParser,
     branch::alt,
-    bytes::complete::{is_not, take_while, take_while1},
+    bytes::complete::{is_a, is_not, take_while, take_while1},
     character::complete::{alpha1, digit1, line_ending},
     combinator::{all_consuming, opt, recognize},
     multi::{many_m_n, many0, separated_list0, separated_list1},
@@ -114,6 +114,12 @@ pub enum Expr<S> {
     /// ...
     Mul(Prim<S>, Prim<S>),
     /// ...
+    BitShl(Prim<S>, Prim<S>),
+    /// ...
+    BitAnd(Prim<S>, Prim<S>),
+    /// ...
+    BitOrr(Prim<S>, Prim<S>),
+    /// ...
     Ord(bool, Ordering, Prim<S>, Prim<S>),
 }
 
@@ -173,9 +179,23 @@ impl Parser {
     /// ...
     pub fn num(input: &str) -> Result<'_, Num> {
         // WARN: Currently, throws on too large. Fix for later!
-        digit1
-            .map(|n: &str| Num(n.parse().expect("number literal too large")))
-            .parse(input)
+        // digit1
+        //     .map(|n: &str| Num(n.parse().expect("number literal too large")))
+        //     .parse(input)
+        alt((
+            // ...
+            preceded(tag("0b"), is_a("01"))
+                .map(|n| Num(isize::from_str_radix(n, 2).expect("failed to parse integer"))),
+            // ...
+            preceded(tag("0o"), is_a("01234567"))
+                .map(|n| Num(isize::from_str_radix(n, 8).expect("failed to parse integer"))),
+            // ...
+            preceded(tag("0x"), is_a("01234567abcdefABCDEF"))
+                .map(|n| Num(isize::from_str_radix(n, 16).expect("failed to parse integer"))),
+            // ...
+            digit1.map(|n| Num(isize::from_str_radix(n, 10).expect("failed to parse integer"))),
+        ))
+        .parse(input)
     }
 
     /// ...
@@ -339,6 +359,8 @@ impl Parser {
                         tag("<"),
                         tag("&&"),
                         tag("||"),
+                        tag("&"),
+                        tag("|"),
                     )),
                     take_while(Self::space),
                 ),
@@ -350,6 +372,8 @@ impl Parser {
                 "*" => Expr::Mul(lhs, rhs),
                 "&&" => Expr::And(lhs, rhs),
                 "||" => Expr::Orr(lhs, rhs),
+                "&" => Expr::BitAnd(lhs, rhs),
+                "|" => Expr::BitOrr(lhs, rhs),
                 ">" => Expr::Ord(false, Ordering::Greater, lhs, rhs),
                 "<" => Expr::Ord(false, Ordering::Less, lhs, rhs),
                 "==" => Expr::Ord(false, Ordering::Equal, lhs, rhs),
@@ -596,6 +620,9 @@ impl From<Expr<Borrowed<'_>>> for Expr<Owned> {
             Expr::Add(lhs, rhs) => Self::Add(lhs.into(), rhs.into()),
             Expr::Sub(lhs, rhs) => Self::Sub(lhs.into(), rhs.into()),
             Expr::Mul(lhs, rhs) => Self::Mul(lhs.into(), rhs.into()),
+            Expr::BitShl(lhs, rhs) => Self::BitShl(lhs.into(), rhs.into()),
+            Expr::BitAnd(lhs, rhs) => Self::BitAnd(lhs.into(), rhs.into()),
+            Expr::BitOrr(lhs, rhs) => Self::BitOrr(lhs.into(), rhs.into()),
             Expr::Ord(comp, ord, lhs, rhs) => Self::Ord(comp, ord, lhs.into(), rhs.into()),
         }
     }
