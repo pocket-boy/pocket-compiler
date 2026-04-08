@@ -120,6 +120,12 @@ pub enum Expr<S> {
     /// ...
     Mul(Prim<S>, Prim<S>),
     /// ...
+    Div(Prim<S>, Prim<S>),
+    /// ...
+    Mod(Prim<S>, Prim<S>),
+    /// ...
+    BitNot(Prim<S>),
+    /// ...
     BitShl(Prim<S>, Prim<S>),
     /// ...
     BitAnd(Prim<S>, Prim<S>),
@@ -362,6 +368,8 @@ impl Parser {
             // ...
             preceded(tuple((tag("!"), take_while(Self::space))), Self::prim).map(Expr::Comp),
             // ...
+            preceded(tuple((tag("~"), take_while(Self::space))), Self::prim).map(Expr::BitNot),
+            // ...
             tuple((
                 Self::prim,
                 delimited(
@@ -370,6 +378,8 @@ impl Parser {
                         tag("+"),
                         tag("-"),
                         tag("*"),
+                        tag("/"),
+                        tag("%"),
                         tag("=="),
                         tag("!="),
                         tag(">="),
@@ -389,6 +399,8 @@ impl Parser {
                 "+" => Expr::Add(lhs, rhs),
                 "-" => Expr::Sub(lhs, rhs),
                 "*" => Expr::Mul(lhs, rhs),
+                "/" => Expr::Div(lhs, rhs),
+                "%" => Expr::Mod(lhs, rhs),
                 "&&" => Expr::And(lhs, rhs),
                 "||" => Expr::Orr(lhs, rhs),
                 "&" => Expr::BitAnd(lhs, rhs),
@@ -640,6 +652,9 @@ impl From<Expr<Borrowed<'_>>> for Expr<Owned> {
             Expr::Add(lhs, rhs) => Self::Add(lhs.into(), rhs.into()),
             Expr::Sub(lhs, rhs) => Self::Sub(lhs.into(), rhs.into()),
             Expr::Mul(lhs, rhs) => Self::Mul(lhs.into(), rhs.into()),
+            Expr::Div(lhs, rhs) => Self::Div(lhs.into(), rhs.into()),
+            Expr::Mod(lhs, rhs) => Self::Mod(lhs.into(), rhs.into()),
+            Expr::BitNot(val) => Self::BitNot(val.into()),
             Expr::BitShl(lhs, rhs) => Self::BitShl(lhs.into(), rhs.into()),
             Expr::BitAnd(lhs, rhs) => Self::BitAnd(lhs.into(), rhs.into()),
             Expr::BitOrr(lhs, rhs) => Self::BitOrr(lhs.into(), rhs.into()),

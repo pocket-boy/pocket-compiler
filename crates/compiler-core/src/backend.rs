@@ -207,7 +207,7 @@ impl<E: Environ> Backend<E> {
         // ...
         scopes.push(scope);
         // ...
-        dbg!(Self::eval_body(&mut self.environ, scopes, &render.3, input).expect("RUNTIME ERROR!"));
+        Self::eval_body(&mut self.environ, scopes, &render.3, input).expect("RUNTIME ERROR!");
         // ...
         scopes.pop();
     }
@@ -652,6 +652,32 @@ impl<E: Environ> Backend<E> {
                     _ => None,
                 }
             }
+            Expr::Div(lhs, rhs) => {
+                match (
+                    Self::eval_prim(environ, scopes, lhs, input),
+                    Self::eval_prim(environ, scopes, rhs, input),
+                ) {
+                    (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
+                        Some(Value::Num((lhs.0 / rhs.0).into()))
+                    }
+                    _ => None,
+                }
+            }
+            Expr::Mod(lhs, rhs) => {
+                match (
+                    Self::eval_prim(environ, scopes, lhs, input),
+                    Self::eval_prim(environ, scopes, rhs, input),
+                ) {
+                    (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
+                        Some(Value::Num((lhs.0 % rhs.0).into()))
+                    }
+                    _ => None,
+                }
+            }
+            Expr::BitNot(val) => match Self::eval_prim(environ, scopes, val, input) {
+                Some(Value::Num(val)) => Some(Value::Num(Num(!val.0))),
+                _ => None,
+            },
             Expr::BitShl(lhs, rhs) => match (
                 Self::eval_prim(environ, scopes, lhs, input),
                 Self::eval_prim(environ, scopes, rhs, input),
