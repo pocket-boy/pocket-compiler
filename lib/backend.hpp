@@ -10,6 +10,8 @@ struct ExternEnviron final {
   /** ... */
   void (*draw_tile)(ExternEnviron *environ, uint32_t tile, uint32_t x,
                     uint32_t y);
+  /** ... */
+  void (*load_tile)(ExternEnviron *environ, const char *tiles);
 };
 
 /** Functor for deleting `BackendHandle` handles. */
