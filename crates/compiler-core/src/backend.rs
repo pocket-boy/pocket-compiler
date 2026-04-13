@@ -43,6 +43,8 @@ pub enum Intrinsic {
     ArrayGet,
     /// ...
     ArraySet,
+    /// ...
+    LoadTilemap,
 }
 
 /// ...
@@ -142,6 +144,14 @@ impl<E: Environ> Backend<E> {
                     Name(String::from("pressed")),
                 ]),
                 Binding::Intrinsic(Intrinsic::Pressed),
+            );
+            // ...
+            scopes.last_mut().unwrap().insert(
+                Path(vec![
+                    Name(String::from("Window")),
+                    Name(String::from("load_tilemap")),
+                ]),
+                Binding::Intrinsic(Intrinsic::LoadTilemap),
             );
             // ...
             for (offset, field) in ["RIGHT", "LEFT", "DOWN", "UP", "BUTTON_ONE", "BUTTON_TWO"]
@@ -574,6 +584,22 @@ impl<E: Environ> Backend<E> {
                         Value::Num(val);
                     Value::Arr(arr)
                 })
+            }
+            // ...
+            Binding::Intrinsic(Intrinsic::LoadTilemap) => {
+                // ...
+                let Value::Window = Self::eval_expr(environ, scopes, call.1.get(0)?, input)? else {
+                    return None;
+                };
+                // ...
+                let Value::Str(str) = Self::eval_expr(environ, scopes, call.1.get(1)?, input)?
+                else {
+                    return None;
+                };
+                // ...
+                environ.load_tile(&str.0);
+                // ...
+                Some(Value::Unit)
             }
             // ...
             Binding::Value(_, _) => None,
