@@ -1,3 +1,5 @@
+use std::ffi::{CString, c_char};
+
 use compiler_core::backend::Environ;
 
 /// ...
@@ -9,6 +11,8 @@ pub struct ExternEnviron {
     action_two: extern "C" fn(*const Self, u32),
     /// ...
     draw_tile: extern "C" fn(*const Self, u32, u32, u32),
+    /// ...
+    load_tile: extern "C" fn(*const Self, *const c_char),
 }
 
 impl Environ for ExternEnviron {
@@ -25,5 +29,11 @@ impl Environ for ExternEnviron {
     /// ...
     fn draw_tile(&mut self, tile: u32, x: u32, y: u32) {
         (self.draw_tile)(self as *const _, tile, x, y);
+    }
+
+    /// ...
+    fn load_tile(&mut self, tiles: &String) {
+        let tiles = CString::new(tiles.as_str()).unwrap();
+        (self.load_tile)(self as *const _, tiles.as_ptr());
     }
 }
