@@ -419,7 +419,14 @@ impl<E: Environ> Backend<E> {
         // ...
         Self::bind_ref(scopes, path).map_or(None, |binding| match binding {
             Binding::Value(_, value) => Some(value.clone()),
-            _ => None,
+            _ => panic!(
+                "Variable `{}` is undefined",
+                path.0
+                    .iter()
+                    .map(|name| name.0.clone())
+                    .reduce(|path, name| format!("{}.{}", path, name))
+                    .unwrap()
+            ),
         })
     }
 
@@ -529,7 +536,13 @@ impl<E: Environ> Backend<E> {
                 // ...
                 (usize::try_from(idx.0))
                     .ok()
-                    .and_then(|idx| arr.get(idx))
+                    .map(|idx| {
+                        arr.get(idx).expect(&format!(
+                            "Array.get() OOB: len = {}, idx = {}",
+                            arr.len(),
+                            idx
+                        ))
+                    })
                     .cloned()
             }
             // ...
@@ -550,9 +563,14 @@ impl<E: Environ> Backend<E> {
                     return None;
                 };
                 // ...
-                (usize::try_from(idx.0)).ok().and_then(|idx| {
-                    *(arr.get_mut(idx)?) = Value::Num(val);
-                    Some(Value::Arr(arr))
+                let len = arr.len();
+                // ...
+                (usize::try_from(idx.0)).ok().map(|idx| {
+                    *(arr
+                        .get_mut(idx)
+                        .expect(&format!("Array.set() OOB: len = {}, idx = {}", len, idx))) =
+                        Value::Num(val);
+                    Value::Arr(arr)
                 })
             }
             // ...
