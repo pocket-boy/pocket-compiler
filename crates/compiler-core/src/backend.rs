@@ -94,7 +94,7 @@ impl<E: Environ> Backend<E> {
         let Some(result) = compiler
             .modules
             .get("main")
-            .and_then(|module| dbg!(parser(module)).map(File::<Owned>::from).ok())
+            .and_then(|module| (parser(module)).map(File::<Owned>::from).ok())
         else {
             // ...
             return Self {
@@ -175,8 +175,6 @@ impl<E: Environ> Backend<E> {
                 Binding::Intrinsic(Intrinsic::ArraySet),
             );
         }
-        // ...
-        println!("SCOPES: {:#?}", self.scopes);
     }
 }
 
