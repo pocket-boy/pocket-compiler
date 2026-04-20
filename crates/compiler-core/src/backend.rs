@@ -46,6 +46,8 @@ pub enum Intrinsic {
     /// ...
     CharCode,
     /// ...
+    StringLen,
+    /// ...
     LoadTilemap,
 }
 
@@ -183,6 +185,14 @@ impl<E: Environ> Backend<E> {
                     Name(String::from("char_code")),
                 ]),
                 Binding::Intrinsic(Intrinsic::CharCode),
+            );
+            // ...
+            scopes.last_mut().unwrap().insert(
+                Path(vec![
+                    Name(String::from("String")),
+                    Name(String::from("length")),
+                ]),
+                Binding::Intrinsic(Intrinsic::StringLen),
             );
         }
     }
@@ -608,11 +618,21 @@ impl<E: Environ> Backend<E> {
                 ));
                 // ...
                 let chr: u8 = str.0.as_bytes().get(idx).copied().expect(&format!(
-                    "String.char_code() invalid ASCII: str = {}, idx = {}",
+                    "String.char_code() invalid ASCII / OOB: str = {}, idx = {}",
                     str.0, idx
                 ));
                 // ...
                 Some(Value::Num(Num(chr as isize)))
+            }
+            // ...
+            Binding::Intrinsic(Intrinsic::StringLen) => {
+                // ...
+                let Value::Str(str) = Self::eval_expr(environ, scopes, call.1.get(0)?, input)?
+                else {
+                    return None;
+                };
+                // ...
+                Some(Value::Num(Num(str.0.as_bytes().len() as isize)))
             }
             // ...
             Binding::Intrinsic(Intrinsic::LoadTilemap) => {
