@@ -380,9 +380,14 @@ impl<E: Environ> Backend<E> {
         input: InputState,
     ) -> Option<Option<Value>> {
         // ...
-        let Value::Bool(pred) = Self::eval_expr(environ, scopes, &cond.0, input)? else {
+        let pred = Self::eval_expr(environ, scopes, &cond.0, input)?;
+        // ...
+        let Value::Bool(pred) = pred else {
             // ...
-            return None;
+            panic!(
+                "Expected predicate of `if` statement to be of type boolean, instead got ({:?})",
+                pred
+            );
         };
         // ...
         if pred {
@@ -406,9 +411,14 @@ impl<E: Environ> Backend<E> {
         // ...
         loop {
             // ...
-            let Value::Bool(pred) = Self::eval_expr(environ, scopes, &fold.0, input)? else {
+            let pred = Self::eval_expr(environ, scopes, &fold.0, input)?;
+            // ...
+            let Value::Bool(pred) = pred else {
                 // ...
-                return None;
+                panic!(
+                    "Expected predicate of `while` statement to be of type boolean, instead got ({:?})",
+                    pred
+                );
             };
             // ...
             if pred {
@@ -457,17 +467,26 @@ impl<E: Environ> Backend<E> {
     /// ...
     fn eval_path(scopes: &Vec<Scope>, path: &Path<Owned>) -> Option<Value> {
         // ...
-        Self::bind_ref(scopes, path).map_or(None, |binding| match binding {
-            Binding::Value(_, value) => Some(value.clone()),
-            _ => panic!(
+        Self::bind_ref(scopes, path)
+            .map(|binding| match binding {
+                Binding::Value(_, value) => Some(value.clone()),
+                _ => panic!(
+                    "Variable `{}` must not be a function / intrinsic",
+                    path.0
+                        .iter()
+                        .map(|name| name.0.clone())
+                        .reduce(|path, name| format!("{}.{}", path, name))
+                        .unwrap()
+                ),
+            })
+            .expect(&format!(
                 "Variable `{}` is undefined",
                 path.0
                     .iter()
                     .map(|name| name.0.clone())
                     .reduce(|path, name| format!("{}.{}", path, name))
                     .unwrap()
-            ),
-        })
+            ))
     }
 
     /// ...
@@ -495,7 +514,18 @@ impl<E: Environ> Backend<E> {
     ) -> Option<Value> {
         // println!("CALL: {:?}, {:?}", scopes, call);
         // ...
-        match Self::bind_ref(scopes, &call.0)?.clone() {
+        match Self::bind_ref(scopes, &call.0)
+            .expect(&format!(
+                "Function {} is undefined",
+                call.0
+                    .0
+                    .iter()
+                    .map(|name| name.0.clone())
+                    .reduce(|path, name| format!("{}.{}", path, name))
+                    .unwrap()
+            ))
+            .clone()
+        {
             // ...
             Binding::Func(func) => {
                 // ...
@@ -523,20 +553,20 @@ impl<E: Environ> Backend<E> {
             Binding::Intrinsic(Intrinsic::Draw) => {
                 // ...
                 let Value::Window = Self::eval_expr(environ, scopes, call.1.get(0)?, input)? else {
-                    return None;
+                    panic!("Window.draw_tile() expects arg 0 to be the Window handle");
                 };
                 // ...
                 let Value::Num(tile) = Self::eval_expr(environ, scopes, call.1.get(1)?, input)?
                 else {
-                    return None;
+                    panic!("Window.draw_tile() expects arg 1 to be of type number");
                 };
                 // ...
                 let Value::Num(x) = Self::eval_expr(environ, scopes, call.1.get(2)?, input)? else {
-                    return None;
+                    panic!("Window.draw_tile() expects arg 2 to be of type number");
                 };
                 // ...
                 let Value::Num(y) = Self::eval_expr(environ, scopes, call.1.get(3)?, input)? else {
-                    return None;
+                    panic!("Window.draw_tile() expects arg 3 to be of type number");
                 };
                 // ...
                 environ.draw_tile(tile.0 as _, x.0 as _, y.0 as _);
@@ -547,16 +577,16 @@ impl<E: Environ> Backend<E> {
             Binding::Intrinsic(Intrinsic::Pressed) => {
                 // ...
                 let Value::Input = Self::eval_expr(environ, scopes, call.1.get(0)?, input)? else {
-                    return None;
+                    panic!("Input.pressed() expects arg 0 to be the Input handle");
                 };
                 // ...
                 let Value::Num(button) = Self::eval_expr(environ, scopes, call.1.get(1)?, input)?
                 else {
-                    return None;
+                    panic!("Input.pressed() expects arg 1 to be of type number");
                 };
                 // ...
                 if button.0 < 0 || button.0 > 5 {
-                    return None;
+                    panic!("Input.pressed() expects a number 0..=5");
                 }
                 // ...
                 return Some(Value::Bool((input.0 & (1 << button.0)) != 0));
@@ -566,12 +596,12 @@ impl<E: Environ> Backend<E> {
                 // ...
                 let Value::Arr(arr) = Self::eval_expr(environ, scopes, call.1.get(0)?, input)?
                 else {
-                    return None;
+                    panic!("Array.get() expects arg 0 to be of type array");
                 };
                 // ...
                 let Value::Num(idx) = Self::eval_expr(environ, scopes, call.1.get(1)?, input)?
                 else {
-                    return None;
+                    panic!("Array.get() expects arg 1 to be of type number");
                 };
                 // ...
                 (usize::try_from(idx.0))
@@ -590,15 +620,16 @@ impl<E: Environ> Backend<E> {
                 // ...
                 let Value::Arr(mut arr) = Self::eval_expr(environ, scopes, call.1.get(0)?, input)?
                 else {
-                    return None;
+                    panic!("Array.set() expects arg 0 to be of type array");
                 };
                 // ...
                 let Value::Num(idx) = Self::eval_expr(environ, scopes, call.1.get(1)?, input)?
                 else {
-                    return None;
+                    panic!("Array.set() expects arg 1 to be of type number");
                 };
                 // ...
-                let val = Self::eval_expr(environ, scopes, call.1.get(2)?, input)?;
+                let val = Self::eval_expr(environ, scopes, call.1.get(2)?, input)
+                    .expect("Array.set() expects three arguments");
                 // ...
                 let len = arr.len();
                 // ...
@@ -614,12 +645,12 @@ impl<E: Environ> Backend<E> {
                 // ...
                 let Value::Str(str) = Self::eval_expr(environ, scopes, call.1.get(0)?, input)?
                 else {
-                    return None;
+                    panic!("String.char_code() expects arg 0 to be of type string");
                 };
                 // ...
                 let Value::Num(idx) = Self::eval_expr(environ, scopes, call.1.get(1)?, input)?
                 else {
-                    return None;
+                    panic!("String.char_code() expects arg 1 to be of type number");
                 };
                 // ...
                 let idx: usize = idx.0.try_into().expect(&format!(
@@ -639,7 +670,7 @@ impl<E: Environ> Backend<E> {
                 // ...
                 let Value::Str(str) = Self::eval_expr(environ, scopes, call.1.get(0)?, input)?
                 else {
-                    return None;
+                    panic!("String.length() expects arg 0 to be of type string");
                 };
                 // ...
                 Some(Value::Num(Num(str.0.as_bytes().len() as isize)))
@@ -648,12 +679,12 @@ impl<E: Environ> Backend<E> {
             Binding::Intrinsic(Intrinsic::LoadTilemap) => {
                 // ...
                 let Value::Window = Self::eval_expr(environ, scopes, call.1.get(0)?, input)? else {
-                    return None;
+                    panic!("Window.load_tilemap() expects arg 0 to be the Window handle");
                 };
                 // ...
                 let Value::Str(str) = Self::eval_expr(environ, scopes, call.1.get(1)?, input)?
                 else {
-                    return None;
+                    panic!("Window.load_tilemap() expects arg 1 to be of type string");
                 };
                 // ...
                 environ.load_tile(&str.0);
@@ -663,14 +694,15 @@ impl<E: Environ> Backend<E> {
             // ...
             Binding::Intrinsic(Intrinsic::Debug) => {
                 // ...
-                let value = Self::eval_expr(environ, scopes, call.1.get(0)?, input)?;
+                let value = Self::eval_expr(environ, scopes, call.1.get(0)?, input)
+                    .expect("Debug.debug() expects one argument");
                 // ...
                 println!("[DEBUG]: Value = {:?}", value);
                 // ...
                 Some(value)
             }
             // ...
-            Binding::Value(_, _) => None,
+            Binding::Value(_, value) => panic!("Attempt to call non-function value [{:?}]", value),
         }
     }
 
@@ -707,124 +739,140 @@ impl<E: Environ> Backend<E> {
         // ...
         match expr {
             Expr::Prim(prim) => Self::eval_prim(environ, scopes, prim, input),
-            Expr::Comp(comp) => match Self::eval_prim(environ, scopes, comp, input) {
-                Some(Value::Bool(value)) => Some(Value::Bool(!value)),
-                _ => None,
+            Expr::Comp(comp) => match Self::eval_prim(environ, scopes, comp, input)? {
+                Value::Bool(value) => Some(Value::Bool(!value)),
+                value => panic!(
+                    "Operand of `!` operator must be of type boolean, instead got ({:?})",
+                    value
+                ),
             },
             Expr::And(lhs, rhs) => {
                 match (
-                    Self::eval_prim(environ, scopes, lhs, input),
-                    Self::eval_prim(environ, scopes, rhs, input),
+                    Self::eval_prim(environ, scopes, lhs, input)?,
+                    Self::eval_prim(environ, scopes, rhs, input)?,
                 ) {
-                    (Some(Value::Bool(lhs)), Some(Value::Bool(rhs))) => {
-                        Some(Value::Bool(lhs && rhs))
-                    }
-                    _ => None,
+                    (Value::Bool(lhs), Value::Bool(rhs)) => Some(Value::Bool(lhs && rhs)),
+                    (value1, value2) => panic!(
+                        "Operands of `&&` operator must be of type boolean, instead got ({:?}) and ({:?})",
+                        value1, value2
+                    ),
                 }
             }
             Expr::Orr(lhs, rhs) => {
                 match (
-                    Self::eval_prim(environ, scopes, lhs, input),
-                    Self::eval_prim(environ, scopes, rhs, input),
+                    Self::eval_prim(environ, scopes, lhs, input)?,
+                    Self::eval_prim(environ, scopes, rhs, input)?,
                 ) {
-                    (Some(Value::Bool(lhs)), Some(Value::Bool(rhs))) => {
-                        Some(Value::Bool(lhs || rhs))
-                    }
-                    _ => None,
+                    (Value::Bool(lhs), Value::Bool(rhs)) => Some(Value::Bool(lhs || rhs)),
+                    (value1, value2) => panic!(
+                        "Operands of `||` operator must be of type boolean, instead got ({:?}) and ({:?})",
+                        value1, value2
+                    ),
                 }
             }
             Expr::Add(lhs, rhs) => {
                 match (
-                    Self::eval_prim(environ, scopes, lhs, input),
-                    Self::eval_prim(environ, scopes, rhs, input),
+                    Self::eval_prim(environ, scopes, lhs, input)?,
+                    Self::eval_prim(environ, scopes, rhs, input)?,
                 ) {
-                    (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
-                        Some(Value::Num((lhs.0 + rhs.0).into()))
-                    }
-                    _ => None,
+                    (Value::Num(lhs), Value::Num(rhs)) => Some(Value::Num((lhs.0 + rhs.0).into())),
+                    (value1, value2) => panic!(
+                        "Operands of `+` operator must be of type number, instead got ({:?}) and ({:?})",
+                        value1, value2
+                    ),
                 }
             }
             Expr::Sub(lhs, rhs) => {
                 match (
-                    Self::eval_prim(environ, scopes, lhs, input),
-                    Self::eval_prim(environ, scopes, rhs, input),
+                    Self::eval_prim(environ, scopes, lhs, input)?,
+                    Self::eval_prim(environ, scopes, rhs, input)?,
                 ) {
-                    (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
-                        Some(Value::Num((lhs.0 - rhs.0).into()))
-                    }
-                    _ => None,
+                    (Value::Num(lhs), Value::Num(rhs)) => Some(Value::Num((lhs.0 - rhs.0).into())),
+                    (value1, value2) => panic!(
+                        "Operands of `-` operator must be of type number, instead got ({:?}) and ({:?})",
+                        value1, value2
+                    ),
                 }
             }
             Expr::Mul(lhs, rhs) => {
                 match (
-                    Self::eval_prim(environ, scopes, lhs, input),
-                    Self::eval_prim(environ, scopes, rhs, input),
+                    Self::eval_prim(environ, scopes, lhs, input)?,
+                    Self::eval_prim(environ, scopes, rhs, input)?,
                 ) {
-                    (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
-                        Some(Value::Num((lhs.0 * rhs.0).into()))
-                    }
-                    _ => None,
+                    (Value::Num(lhs), Value::Num(rhs)) => Some(Value::Num((lhs.0 * rhs.0).into())),
+                    (value1, value2) => panic!(
+                        "Operands of `*` operator must be of type number, instead got ({:?}) and ({:?})",
+                        value1, value2
+                    ),
                 }
             }
             Expr::Div(lhs, rhs) => {
                 match (
-                    Self::eval_prim(environ, scopes, lhs, input),
-                    Self::eval_prim(environ, scopes, rhs, input),
+                    Self::eval_prim(environ, scopes, lhs, input)?,
+                    Self::eval_prim(environ, scopes, rhs, input)?,
                 ) {
-                    (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
-                        Some(Value::Num((lhs.0 / rhs.0).into()))
-                    }
-                    _ => None,
+                    (Value::Num(lhs), Value::Num(rhs)) => Some(Value::Num((lhs.0 / rhs.0).into())),
+                    (value1, value2) => panic!(
+                        "Operands of `/` operator must be of type number, instead got ({:?}) and ({:?})",
+                        value1, value2
+                    ),
                 }
             }
             Expr::Mod(lhs, rhs) => {
                 match (
-                    Self::eval_prim(environ, scopes, lhs, input),
-                    Self::eval_prim(environ, scopes, rhs, input),
+                    Self::eval_prim(environ, scopes, lhs, input)?,
+                    Self::eval_prim(environ, scopes, rhs, input)?,
                 ) {
-                    (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
-                        Some(Value::Num((lhs.0 % rhs.0).into()))
-                    }
-                    _ => None,
+                    (Value::Num(lhs), Value::Num(rhs)) => Some(Value::Num((lhs.0 % rhs.0).into())),
+                    (value1, value2) => panic!(
+                        "Operands of `%` operator must be of type number, instead got ({:?}) and ({:?})",
+                        value1, value2
+                    ),
                 }
             }
-            Expr::BitNot(val) => match Self::eval_prim(environ, scopes, val, input) {
-                Some(Value::Num(val)) => Some(Value::Num(Num(!val.0))),
-                _ => None,
+            Expr::BitNot(val) => match Self::eval_prim(environ, scopes, val, input)? {
+                Value::Num(val) => Some(Value::Num(Num(!val.0))),
+                value => panic!(
+                    "Operand of `~` operator must be of type number, instead got ({:?})",
+                    value
+                ),
             },
             Expr::BitShl(lhs, rhs) => match (
-                Self::eval_prim(environ, scopes, lhs, input),
-                Self::eval_prim(environ, scopes, rhs, input),
+                Self::eval_prim(environ, scopes, lhs, input)?,
+                Self::eval_prim(environ, scopes, rhs, input)?,
             ) {
-                (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
-                    Some(Value::Num((lhs.0 << rhs.0).into()))
-                }
-                _ => None,
+                (Value::Num(lhs), Value::Num(rhs)) => Some(Value::Num((lhs.0 << rhs.0).into())),
+                (value1, value2) => panic!(
+                    "Operands of `<<` operator must be of type number, instead got ({:?}) and ({:?})",
+                    value1, value2
+                ),
             },
             Expr::BitAnd(lhs, rhs) => match (
-                Self::eval_prim(environ, scopes, lhs, input),
-                Self::eval_prim(environ, scopes, rhs, input),
+                Self::eval_prim(environ, scopes, lhs, input)?,
+                Self::eval_prim(environ, scopes, rhs, input)?,
             ) {
-                (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
-                    Some(Value::Num((lhs.0 & rhs.0).into()))
-                }
-                _ => None,
+                (Value::Num(lhs), Value::Num(rhs)) => Some(Value::Num((lhs.0 & rhs.0).into())),
+                (value1, value2) => panic!(
+                    "Operands of `&` operator must be of type number, instead got ({:?}) and ({:?})",
+                    value1, value2
+                ),
             },
             Expr::BitOrr(lhs, rhs) => match (
-                Self::eval_prim(environ, scopes, lhs, input),
-                Self::eval_prim(environ, scopes, rhs, input),
+                Self::eval_prim(environ, scopes, lhs, input)?,
+                Self::eval_prim(environ, scopes, rhs, input)?,
             ) {
-                (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
-                    Some(Value::Num((lhs.0 | rhs.0).into()))
-                }
-                _ => None,
+                (Value::Num(lhs), Value::Num(rhs)) => Some(Value::Num((lhs.0 | rhs.0).into())),
+                (value1, value2) => panic!(
+                    "Operands of `|` operator must be of type number, instead got ({:?}) and ({:?})",
+                    value1, value2
+                ),
             },
             Expr::Ord(comp, ordering, lhs, rhs) => {
                 match (
-                    Self::eval_prim(environ, scopes, lhs, input),
-                    Self::eval_prim(environ, scopes, rhs, input),
+                    Self::eval_prim(environ, scopes, lhs, input)?,
+                    Self::eval_prim(environ, scopes, rhs, input)?,
                 ) {
-                    (Some(Value::Num(lhs)), Some(Value::Num(rhs))) => {
+                    (Value::Num(lhs), Value::Num(rhs)) => {
                         let value = match ordering {
                             Ordering::Less => Some(lhs.0 < rhs.0),
                             Ordering::Equal => Some(lhs.0 == rhs.0),
@@ -836,7 +884,10 @@ impl<E: Environ> Backend<E> {
                             Value::Bool(value)
                         })
                     }
-                    _ => None,
+                    (value1, value2) => panic!(
+                        "Operands of comparison operators must be of type number, instead got ({:?}) and ({:?})",
+                        value1, value2
+                    ),
                 }
             }
         }
