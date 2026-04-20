@@ -49,6 +49,8 @@ pub enum Intrinsic {
     StringLen,
     /// ...
     LoadTilemap,
+    /// ...
+    Debug,
 }
 
 /// ...
@@ -193,6 +195,14 @@ impl<E: Environ> Backend<E> {
                     Name(String::from("length")),
                 ]),
                 Binding::Intrinsic(Intrinsic::StringLen),
+            );
+            // ...
+            scopes.last_mut().unwrap().insert(
+                Path(vec![
+                    Name(String::from("Debug")),
+                    Name(String::from("debug")),
+                ]),
+                Binding::Intrinsic(Intrinsic::Debug),
             );
         }
     }
@@ -649,6 +659,15 @@ impl<E: Environ> Backend<E> {
                 environ.load_tile(&str.0);
                 // ...
                 Some(Value::Unit)
+            }
+            // ...
+            Binding::Intrinsic(Intrinsic::Debug) => {
+                // ...
+                let value = Self::eval_expr(environ, scopes, call.1.get(0)?, input)?;
+                // ...
+                println!("[DEBUG]: Value = {:?}", value);
+                // ...
+                Some(value)
             }
             // ...
             Binding::Value(_, _) => None,
