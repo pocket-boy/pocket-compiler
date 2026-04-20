@@ -606,26 +606,17 @@ impl<E: Environ> Backend<E> {
                     return None;
                 };
                 // ...
-                let idx = idx.0.try_into().expect(&format!(
+                let idx: usize = idx.0.try_into().expect(&format!(
                     "String.char_code() invalid index: idx = {}",
                     idx.0
                 ));
                 // ...
-                let chr = str
-                    .0
-                    .chars()
-                    .nth(idx)
-                    .expect(&format!(
-                        "String.char_code() OOB: str = {}, idx = {}",
-                        str.0, idx,
-                    ))
-                    .as_ascii()
-                    .expect(&format!(
-                        "String.char_code() invalid ASCII: str = {}, idx = {}",
-                        str.0, idx
-                    ));
+                let chr: u8 = str.0.as_bytes().get(idx).copied().expect(&format!(
+                    "String.char_code() invalid ASCII: str = {}, idx = {}",
+                    str.0, idx
+                ));
                 // ...
-                Some(Value::Num(Num(chr.to_u8() as isize)))
+                Some(Value::Num(Num(chr as isize)))
             }
             // ...
             Binding::Intrinsic(Intrinsic::LoadTilemap) => {
