@@ -578,18 +578,14 @@ impl<E: Environ> Backend<E> {
                     return None;
                 };
                 // ...
-                let Value::Num(val) = Self::eval_expr(environ, scopes, call.1.get(2)?, input)?
-                else {
-                    return None;
-                };
+                let val = Self::eval_expr(environ, scopes, call.1.get(2)?, input)?;
                 // ...
                 let len = arr.len();
                 // ...
                 (usize::try_from(idx.0)).ok().map(|idx| {
                     *(arr
                         .get_mut(idx)
-                        .expect(&format!("Array.set() OOB: len = {}, idx = {}", len, idx))) =
-                        Value::Num(val);
+                        .expect(&format!("Array.set() OOB: len = {}, idx = {}", len, idx))) = val;
                     Value::Arr(arr)
                 })
             }
