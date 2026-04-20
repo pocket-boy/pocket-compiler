@@ -44,6 +44,8 @@ pub enum Intrinsic {
     /// ...
     ArraySet,
     /// ...
+    CharCode,
+    /// ...
     LoadTilemap,
 }
 
@@ -173,6 +175,14 @@ impl<E: Environ> Backend<E> {
             scopes.last_mut().unwrap().insert(
                 Path(vec![Name(String::from("Array")), Name(String::from("set"))]),
                 Binding::Intrinsic(Intrinsic::ArraySet),
+            );
+            // ...
+            scopes.last_mut().unwrap().insert(
+                Path(vec![
+                    Name(String::from("String")),
+                    Name(String::from("char_code")),
+                ]),
+                Binding::Intrinsic(Intrinsic::CharCode),
             );
         }
     }
@@ -582,6 +592,25 @@ impl<E: Environ> Backend<E> {
                         Value::Num(val);
                     Value::Arr(arr)
                 })
+            }
+            // ...
+            Binding::Intrinsic(Intrinsic::CharCode) => {
+                // ...
+                let Value::Str(str) = Self::eval_expr(environ, scopes, call.1.get(0)?, input)?
+                else {
+                    return None;
+                };
+                // ...
+                let Value::Num(idx) = Self::eval_expr(environ, scopes, call.1.get(1)?, input)?
+                else {
+                    return None;
+                };
+                // ...
+                let idx = idx.0.try_into().expect("");
+                // ...
+                let chr = str.0.chars().nth(idx).expect("").as_ascii().expect("");
+                // ...
+                Some(Value::Num(Num(chr.to_u8() as isize)))
             }
             // ...
             Binding::Intrinsic(Intrinsic::LoadTilemap) => {
